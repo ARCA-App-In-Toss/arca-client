@@ -32,15 +32,15 @@
   --color-border-on-light: #7890ad;
   --color-brand-primary: #3659bc;
   --color-signal: #9adbdc;
-  --color-memory: #b4a0ef;
+  --color-memory: #c2e8ff;
   --color-warmth: #c98a3d;
 
   --color-signal-step-1: #509dab;
   --color-signal-step-2: #265367;
   --color-signal-step-3: #172f43;
-  --color-memory-step-1: #8068bf;
-  --color-memory-step-2: #493b76;
-  --color-memory-step-3: #282541;
+  --color-memory-step-1: #7dbbeb;
+  --color-memory-step-2: #3a6c9e;
+  --color-memory-step-3: #1f3a5c;
   --color-brand-primary-deep: #253c79;
   --color-bg-scene-raised: #22354e;
   --color-bg-canvas-deep: #050b15;
