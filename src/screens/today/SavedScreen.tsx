@@ -33,7 +33,6 @@ export function SavedScreen() {
   const [hierarchy] = useState<Hierarchy>(() =>
     count?.state === 'AVAILABLE' && count.value.count === 1 ? 'archive-first' : 'today-first',
   );
-  const [repeatShown] = useState(() => count?.state === 'AVAILABLE' && count.value.count >= 2);
 
   useEffect(() => {
     resultRef.current?.focus({ preventScroll: true });
@@ -67,7 +66,6 @@ export function SavedScreen() {
         <h2 ref={resultRef} tabIndex={-1} className="arca-screen-title arca-screen-title--result" id="f12-result">
           {copy['CPY-F12-004']}
         </h2>
-        {repeatShown && <p className="arca-text-secondary">{copy['CPY-F12-006']}</p>}
         {count?.state === 'AVAILABLE' ? (
           // biome-ignore lint/a11y/useSemanticElements: 기록 수를 이름 붙은 group으로 묶는다.
           <div role="group" aria-label={copy['CPY-F12-019']} className="arca-memory-count">

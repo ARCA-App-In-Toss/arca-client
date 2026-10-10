@@ -29,7 +29,7 @@ const actionButtons = () =>
     .filter((b) => ([copy['CPY-F12-013'], copy['CPY-F12-014']] as string[]).includes(b.textContent ?? ''));
 
 describe('F12 completion hierarchy (IX-039)', () => {
-  test('MS-CORE-010 existing memory on another day: count 2 → today first, repeat line shown', async () => {
+  test('MS-CORE-010 existing memory on another day: count 2 → today first, no repeat line', async () => {
     const world = createMockWorld('server.activeUnanswered');
     world.seedAnswer(SYNTHETIC_KEYS.registered, '어제 합성', {
       dailySemaId: 'synthetic-yesterday',
@@ -38,7 +38,7 @@ describe('F12 completion hierarchy (IX-039)', () => {
     });
     await saveOnce(world, '오늘 합성');
     expect(screen.getByRole('group', { name: copy['CPY-F12-019'] })).toHaveTextContent('기억 조각 2개');
-    expect(screen.getByText(copy['CPY-F12-006'])).toBeInTheDocument();
+    expect(screen.queryByText('오늘의 기록을 마쳤어요.')).not.toBeInTheDocument();
     const [first, second] = actionButtons();
     expect(first).toHaveTextContent(copy['CPY-F12-014']);
     expect(first).toHaveClass('arca-button--primary');
