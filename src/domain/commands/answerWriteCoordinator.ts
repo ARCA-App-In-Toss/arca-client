@@ -1,11 +1,17 @@
 import type { DraftRepository } from '../drafts/draftRepository.ts';
-import { DomainFailure } from '../failures.ts';
+import { DomainFailure, ProtocolFailure } from '../failures.ts';
 import type { AnswerDetail, AnswerWriteInput, SaveAnswerResult, Today } from '../models.ts';
 import type { ArcaApi } from '../ports/api.ts';
 import type { SessionController } from '../session/sessionController.ts';
 import type { AnswerWriteStore, PendingAnswer } from './answerWriteStore.ts';
 export interface Completion extends SaveAnswerResult {
   answerId: string;
+}
+export type UnconfirmedCause = 'network' | 'server' | 'protocol';
+function causeOf(error: unknown): UnconfirmedCause {
+  if (error instanceof DomainFailure) return 'server';
+  if (error instanceof ProtocolFailure) return 'protocol';
+  return 'network';
 }
 export type WriteView =
   | { kind: 'idle' }
@@ -15,7 +21,7 @@ export type WriteView =
       stage: 'keeping' | 'sending' | 'confirming';
       trackerKept: boolean;
     }
-  | { kind: 'unconfirmed'; mode: 'CREATE' | 'UPDATE' | 'DELETE'; trackerKept: boolean }
+  | { kind: 'unconfirmed'; mode: 'CREATE' | 'UPDATE' | 'DELETE'; trackerKept: boolean; cause: UnconfirmedCause }
   | { kind: 'succeeded'; completion: Completion }
   | { kind: 'deleted' }
   | { kind: 'rejected'; mode: 'CREATE' | 'UPDATE' | 'DELETE'; code: string }
@@ -161,7 +167,12 @@ export class AnswerWriteCoordinator {
           this.set(
             target,
             (previous.kind === 'working' || previous.kind === 'unconfirmed') && previous.trackerKept
-              ? { kind: 'unconfirmed', mode: previous.mode, trackerKept: true }
+              ? {
+                  kind: 'unconfirmed',
+                  mode: previous.mode,
+                  trackerKept: true,
+                  cause: previous.kind === 'unconfirmed' ? previous.cause : 'network',
+                }
               : { kind: 'localFailure' },
           );
         }
@@ -213,12 +224,18 @@ export class AnswerWriteCoordinator {
         this.set(target, { kind: 'rejected', mode: p.input.mode, code: e.code });
         return;
       }
-      await this.confirm(target, p, check);
+      await this.confirm(target, p, check, false, causeOf(e));
     }
   }
-  private async confirm(target: string, p: PendingAnswer, check: () => void, exists = false) {
+  private async confirm(
+    target: string,
+    p: PendingAnswer,
+    check: () => void,
+    exists = false,
+    cause: UnconfirmedCause = 'network',
+  ) {
     if (p.input.mode !== 'CREATE') {
-      await this.confirmExisting(target, p, p.input.answerId, check);
+      await this.confirmExisting(target, p, p.input.answerId, check, cause);
       return;
     }
     const today = await this.deps.session.run('ACTIVE', (auth) => this.deps.api.getToday(auth)).catch(() => null);
@@ -244,9 +261,15 @@ export class AnswerWriteCoordinator {
       this.set(target, { kind: 'rejected', mode: p.input.mode, code: 'ANSWER_ALREADY_EXISTS' });
       return;
     }
-    this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true });
+    this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true, cause });
   }
-  private async confirmExisting(target: string, p: PendingAnswer, answerId: string, check: () => void) {
+  private async confirmExisting(
+    target: string,
+    p: PendingAnswer,
+    answerId: string,
+    check: () => void,
+    cause: UnconfirmedCause,
+  ) {
     let current: AnswerDetail;
     try {
       current = await this.deps.session.run('ACTIVE', (auth) => this.deps.api.getAnswer(auth, answerId));
@@ -262,7 +285,7 @@ export class AnswerWriteCoordinator {
         this.set(target, { kind: 'rejected', mode: p.input.mode, code: e.code });
         return;
       }
-      this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true });
+      this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true, cause });
       return;
     }
     check();
@@ -274,7 +297,7 @@ export class AnswerWriteCoordinator {
         return;
       }
     }
-    this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true });
+    this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true, cause });
   }
   private async finishSave(target: string, p: PendingAnswer, result: SaveAnswerResult, check: () => void) {
     await this.deps.syncCurrentResources({ kind: 'saved', result }).catch(() => undefined);
