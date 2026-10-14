@@ -67,15 +67,16 @@ test('MS-CORE-009 / MS-PLATFORM-003 fonts and images blocked: question, writing,
   await expect(page.getByRole('button', { name: '내 기억 조각 보기' })).toBeVisible();
 });
 
-test('saved record supports direct edit and delete without commands or historical reads', async ({ page }) => {
+test('saved record opens from the archive and supports direct edit and delete without commands', async ({ page }) => {
   const unavailable: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname.startsWith('/v1/commands') || (request.method() === 'GET' && /^\/v1\/answers/.test(url.pathname)))
-      unavailable.push(url.pathname);
+    if (url.pathname.startsWith('/v1/commands')) unavailable.push(url.pathname);
   });
   await writeAndSave(page);
-  await page.getByRole('button', { name: '내 기억 조각 보기' }).click();
+  await page.getByRole('button', { name: '항해 기록 보기' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '항해 기록' })).toBeVisible();
+  await page.locator('.arca-memory-row').first().click();
   await expect(page.getByRole('heading', { level: 1, name: '기억 조각' })).toBeVisible();
   await page.screenshot({ path: `/tmp/arca-api-detail-${test.info().project.name}.png`, fullPage: true });
   await page.getByRole('button', { name: '수정하기' }).click();
@@ -92,7 +93,9 @@ test('saved record supports direct edit and delete without commands or historica
   const dialog = page.getByRole('alertdialog');
   await expect(dialog.getByRole('button', { name: '취소' })).toBeFocused();
   await dialog.getByRole('button', { name: '삭제', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '오늘의 항해' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: '항해 기록' })).toBeVisible();
+  await expect(page.locator('.arca-memory-row')).toHaveCount(0);
+  await page.getByRole('button', { name: '오늘', exact: true }).click();
   await expect(page.getByRole('button', { name: '답변 작성하기' })).toBeVisible();
   expect(unavailable).toEqual([]);
 });
