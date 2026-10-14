@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "ARCA implemented backend API",
-    "version": "2.3.0",
-    "description": "2026-10-13 사용자 제공 백엔드 전환 가이드(feat/16-answer) 기준. 구현된 9개 endpoint만 포함. 실제 host 미제공."
+    "version": "2.4.2",
+    "description": "2026-10-14 사용자 제공 백엔드 전환 가이드(feat/19-product-event-collection) 기준. 구현된 13개 endpoint 포함. 실제 host 미제공."
   },
   "paths": {
     "/v1/sessions": {
@@ -223,6 +223,48 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "deleteMember",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-allowed-session-modes": [
+          "ACTIVE"
+        ],
+        "responses": {
+          "204": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "백엔드 전환 가이드의 HTTP 오류",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/members/me/nickname": {
@@ -396,6 +438,66 @@
             }
           }
         }
+      },
+      "get": {
+        "operationId": "listAnswers",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-allowed-session-modes": [
+          "ACTIVE"
+        ],
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "백엔드 전환 가이드의 HTTP 오류",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/answers/{answerId}": {
@@ -526,6 +628,120 @@
             }
           }
         ]
+      },
+      "get": {
+        "operationId": "getAnswer",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-allowed-session-modes": [
+          "ACTIVE"
+        ],
+        "parameters": [
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerDetail"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "백엔드 전환 가이드의 HTTP 오류",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/analytics/event-batches": {
+      "post": {
+        "operationId": "createEventBatch",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-allowed-session-modes": [
+          "GUEST",
+          "ACTIVE"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventBatchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "성공",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "백엔드 전환 가이드의 HTTP 오류",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -1590,6 +1806,440 @@
         },
         "required": [
           "error"
+        ],
+        "additionalProperties": false
+      },
+      "AnswerSummary": {
+        "type": "object",
+        "properties": {
+          "answerId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "dailySemaId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "semaId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "semaCode": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Instant"
+          },
+          "createdDateKst": {
+            "$ref": "#/components/schemas/KstDate"
+          },
+          "isEdited": {
+            "type": "boolean"
+          },
+          "question": {
+            "$ref": "#/components/schemas/Question"
+          }
+        },
+        "required": [
+          "answerId",
+          "dailySemaId",
+          "semaId",
+          "semaCode",
+          "createdAt",
+          "updatedAt",
+          "createdDateKst",
+          "isEdited",
+          "question"
+        ]
+      },
+      "AnswerPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/AnswerSummary"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ProductEventInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "onboarding_started"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "onboarding_skipped"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "today_sema_viewed"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "answerState": {
+                    "type": "string",
+                    "enum": [
+                      "UNANSWERED",
+                      "ANSWERED"
+                    ]
+                  }
+                },
+                "required": [
+                  "answerState"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "alternate_question_viewed"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false,
+                "maxProperties": 0
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "sema_question_changed"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "enum": [
+                      "PRIMARY",
+                      "ALTERNATE"
+                    ]
+                  },
+                  "to": {
+                    "type": "string",
+                    "enum": [
+                      "PRIMARY",
+                      "ALTERNATE"
+                    ]
+                  }
+                },
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "answer_started"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "CREATE",
+                      "UPDATE"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "answer_save_failed"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "CREATE",
+                      "UPDATE"
+                    ]
+                  },
+                  "certainty": {
+                    "type": "string",
+                    "enum": [
+                      "REJECTED",
+                      "UNKNOWN"
+                    ]
+                  },
+                  "reasonCode": {
+                    "type": "string",
+                    "enum": [
+                      "VALIDATION_REJECTED",
+                      "DATE_CHANGED",
+                      "CONTENT_REPLACED",
+                      "CONFLICT",
+                      "NETWORK_UNCONFIRMED",
+                      "SERVER_UNAVAILABLE",
+                      "PROTOCOL_UNCONFIRMED"
+                    ]
+                  }
+                },
+                "required": [
+                  "mode",
+                  "certainty",
+                  "reasonCode"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "eventId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "schemaVersion": {
+                "const": 1
+              },
+              "name": {
+                "const": "archive_viewed"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/Instant"
+              },
+              "properties": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "EMPTY",
+                      "NON_EMPTY"
+                    ]
+                  }
+                },
+                "required": [
+                  "state"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "eventId",
+              "schemaVersion",
+              "name",
+              "occurredAt",
+              "properties"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "CreateEventBatchInput": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/ProductEventInput"
+            }
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "IOS",
+              "ANDROID"
+            ]
+          }
+        },
+        "required": [
+          "events"
         ],
         "additionalProperties": false
       }

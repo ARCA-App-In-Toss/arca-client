@@ -799,6 +799,181 @@
           "requestId": "synthetic-value"
         }
       }
+    },
+    {
+      "name": "valid current backend shape",
+      "schema": "AnswerSummary",
+      "valid": true,
+      "value": {
+        "answerId": "synthetic-value",
+        "dailySemaId": "synthetic-value",
+        "semaId": "synthetic-value",
+        "semaCode": "synthetic-value",
+        "createdAt": "2026-10-13T05:00:00.123456Z",
+        "updatedAt": "2026-10-13T05:00:00.123456Z",
+        "createdDateKst": "2026-10-13",
+        "isEdited": true,
+        "question": {
+          "questionId": "synthetic-value",
+          "text": "synthetic-value"
+        }
+      }
+    },
+    {
+      "name": "missing required field",
+      "schema": "AnswerSummary",
+      "valid": false,
+      "value": {
+        "answerId": "synthetic-value",
+        "dailySemaId": "synthetic-value",
+        "semaId": "synthetic-value",
+        "semaCode": "synthetic-value",
+        "createdAt": "2026-10-13T05:00:00.123456Z",
+        "updatedAt": "2026-10-13T05:00:00.123456Z",
+        "createdDateKst": "2026-10-13",
+        "isEdited": true
+      }
+    },
+    {
+      "name": "valid current backend shape",
+      "schema": "AnswerPage",
+      "valid": true,
+      "value": {
+        "items": [
+          {
+            "answerId": "synthetic-value",
+            "dailySemaId": "synthetic-value",
+            "semaId": "synthetic-value",
+            "semaCode": "synthetic-value",
+            "createdAt": "2026-10-13T05:00:00.123456Z",
+            "updatedAt": "2026-10-13T05:00:00.123456Z",
+            "createdDateKst": "2026-10-13",
+            "isEdited": true,
+            "question": {
+              "questionId": "synthetic-value",
+              "text": "synthetic-value"
+            }
+          }
+        ],
+        "nextCursor": "42"
+      }
+    },
+    {
+      "name": "empty last page",
+      "schema": "AnswerPage",
+      "valid": true,
+      "value": {
+        "items": [],
+        "nextCursor": null
+      }
+    },
+    {
+      "name": "missing nextCursor",
+      "schema": "AnswerPage",
+      "valid": false,
+      "value": {
+        "items": []
+      }
+    },
+    {
+      "name": "valid current backend shape",
+      "schema": "CreateEventBatchInput",
+      "valid": true,
+      "value": {
+        "events": [
+          {
+            "eventId": "66d9e9af-2026-4000-8000-000000000003",
+            "schemaVersion": 1,
+            "name": "answer_save_failed",
+            "occurredAt": "2026-10-13T14:59:00Z",
+            "properties": {
+              "mode": "CREATE",
+              "certainty": "UNKNOWN",
+              "reasonCode": "NETWORK_UNCONFIRMED"
+            }
+          }
+        ],
+        "appVersion": "1.0.0",
+        "platform": "IOS"
+      }
+    },
+    {
+      "name": "empty events",
+      "schema": "CreateEventBatchInput",
+      "valid": false,
+      "value": {
+        "events": []
+      }
+    },
+    {
+      "name": "appVersion over 50",
+      "schema": "CreateEventBatchInput",
+      "valid": false,
+      "value": {
+        "events": [
+          {
+            "eventId": "66d9e9af-2026-4000-8000-000000000001",
+            "schemaVersion": 1,
+            "name": "onboarding_started",
+            "occurredAt": "2026-10-13T14:59:00Z",
+            "properties": {}
+          }
+        ],
+        "appVersion": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "name": "empty properties event",
+      "schema": "ProductEventInput",
+      "valid": true,
+      "value": {
+        "eventId": "66d9e9af-2026-4000-8000-000000000001",
+        "schemaVersion": 1,
+        "name": "onboarding_started",
+        "occurredAt": "2026-10-13T14:59:00Z",
+        "properties": {}
+      }
+    },
+    {
+      "name": "missing required property",
+      "schema": "ProductEventInput",
+      "valid": false,
+      "value": {
+        "eventId": "66d9e9af-2026-4000-8000-000000000002",
+        "schemaVersion": 1,
+        "name": "answer_save_failed",
+        "occurredAt": "2026-10-13T14:59:00Z",
+        "properties": {
+          "mode": "CREATE",
+          "certainty": "UNKNOWN"
+        }
+      }
+    },
+    {
+      "name": "server owned event",
+      "schema": "ProductEventInput",
+      "valid": false,
+      "value": {
+        "eventId": "66d9e9af-2026-4000-8000-000000000004",
+        "schemaVersion": 1,
+        "name": "answer_saved",
+        "occurredAt": "2026-10-13T14:59:00Z",
+        "properties": {}
+      }
+    },
+    {
+      "name": "extra property",
+      "schema": "ProductEventInput",
+      "valid": false,
+      "value": {
+        "eventId": "66d9e9af-2026-4000-8000-000000000005",
+        "schemaVersion": 1,
+        "name": "onboarding_skipped",
+        "occurredAt": "2026-10-13T14:59:00Z",
+        "properties": {
+          "memberCode": "ARCA-7K2QX"
+        }
+      }
     }
   ]
 }
