@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate } from 'react-router';
+import { useAnswerSaveFailedEvent, useAnswerStartedEvent } from '../../app/hooks/analytics.ts';
 import { useAnswerCommand, usePendingAnswer } from '../../app/hooks/answers.ts';
 import { useAnswer } from '../../app/hooks/archive.ts';
 import { useCopyText } from '../../app/hooks/device.ts';
@@ -61,6 +62,12 @@ function EditForm({ answer }: { answer: AnswerDetail }) {
   );
   const draft = useDraftSession(identity, undefined, answer.content);
   const input = useAnswerInput(draft);
+  useAnswerStartedEvent('UPDATE', {
+    ready: draft.load.kind !== 'loading',
+    text: draft.text,
+    composing: input.composing,
+  });
+  useAnswerSaveFailedEvent('UPDATE', command.view);
   const copyText = useCopyText();
   const [copied, setCopied] = useState<string | null>(null);
   const backRef = useRef<HTMLButtonElement | null>(null);
