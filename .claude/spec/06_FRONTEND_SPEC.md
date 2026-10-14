@@ -1,5 +1,8 @@
 # ARCA 프런트엔드 구현 명세
 
+> 2026-10-13 API 전환: 사용자 제공 백엔드 2.3.0 가이드가 채택되었다. 이 문서의 과거 command/ticket·revision·dataGeneration·발췌 계약과 복구 상태는 현재 연결에 적용하지 않는다. 현재 API·응답 유실 처리·미구현 범위는 05_API_SPEC.md와 루트 API_INTEGRATION_GAPS.md를 따른다.
+
+
 - 문서 버전: v1.11
 - 최근 수정일: 2026년 9월 30일
 - 상태: 확정
