@@ -1,6 +1,6 @@
 # ARCA 프런트엔드 구현 명세
 
-> 2026-10-13 API 전환: 사용자 제공 백엔드 2.3.0 가이드가 채택되었다. 이 문서의 과거 command/ticket·revision·dataGeneration·발췌 계약과 복구 상태는 현재 연결에 적용하지 않는다. 현재 API·응답 유실 처리·미구현 범위는 05_API_SPEC.md와 루트 API_INTEGRATION_GAPS.md를 따른다.
+> 2026-10-14 API 전환: 사용자 제공 백엔드 2.4.2 가이드가 채택되었다. 이 문서의 과거 command/ticket·revision·dataGeneration·발췌 계약과 복구 상태는 현재 연결에 적용하지 않는다. 현재 API·응답 유실 처리는 05_API_SPEC.md, 서버 확인이 남은 항목은 루트 API_INTEGRATION_GAPS.md를 따른다.
 
 
 - 문서 버전: v1.11
@@ -73,7 +73,7 @@ composition root·레이어/port·route/guard·상태/cache·session epoch/gener
 | 모션·날짜 | CSS/Web Animations API, `Intl.DateTimeFormat`, 주입 `Clock` | Motion/date utility library 없음 |
 | Mock·검증 | AIT Devtools, MSW 2, Vitest 5, RTL, user-event, axe-core, Playwright Chromium·WebKit, 실제 iOS·Android QR | MSW 2.15.0(`pnpm-workspace.yaml`에서 postinstall 비허용, dev server plugin이 `msw/mockServiceWorker.js`를 제공), Vitest 5.0.2(jsdom 30.1.1, `unit`·`contract` project), RTL 16.3.3·`@testing-library/dom` 10.4.2, user-event 14.6.7, jest-dom 7.0.1, axe-core 4.13.0, Playwright 1.63.0(Chromium·WebKit, 정적 preview와 Mock 시나리오별 dev server project). AIT Devtools는 Vite plugin 연결. 기기 QR 미실행 |
 | 정적 품질·패키지 | TypeScript strict 옵션, Biome 2, Node 24 LTS, 고정 pnpm·lockfile | strict·`noUncheckedIndexedAccess`·`exactOptionalPropertyTypes`(`tsc -b`, 각 tsconfig `noEmit`), Biome 2.5.14 recommended + 계층별 `noRestrictedImports`(§3.1), pnpm 12.6.0(`packageManager`)·`pnpm-lock.yaml`, `.nvmrc`=24·`engines` ≥24 |
-| 오류·분석 | Replay·PII를 끈 최소 Sentry, ARCA OP-014 | `AnalyticsQueue`(`src/domain/analytics/`)가 `ArcaApi.submitProductEvents`로 OP-014를 전송(§10.3). Sentry SDK 미구현(단계 8). 실제 DSN·환경값 없음; 비밀값은 문서 범위 아님 |
+| 오류·분석 | Replay·PII를 끈 최소 Sentry, ARCA OP-014 | `AnalyticsQueue`(`src/domain/analytics/`)가 `ArcaApi.sendEventBatch`로 `POST /v1/analytics/event-batches`를 전송(§10.3). Sentry SDK 미구현(단계 8). 실제 DSN·환경값 없음; 비밀값은 문서 범위 아님 |
 
 프로젝트 생성 시점의 공식 템플릿·SDK·peer dependency를 확인하고 정확한 버전을 lockfile로 고정합니다([D-TECH-008 · L63](./DECISIONS.md#4-기술-스택-결정)). 월 1회 검증 후 업데이트합니다. Radix는 ARCA wrapper 밖에서 직접 import하지 않습니다.
 

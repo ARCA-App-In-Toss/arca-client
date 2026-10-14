@@ -16,6 +16,6 @@ paths:
 - 호환 추가 field는 허용하지만 필수 field·타입·날짜·nullability·닫힌 enum/event 오류는 `ProtocolFailure`다.
 - `TransportFailure`, `ProtocolFailure`, 인증된 `DomainFailure`, terminal 결과를 섞지 않는다.
 - timeout·Abort·5xx·조회 부재는 mutation 미적용 증거가 아니다. 현재 백엔드 가이드에 따라 리소스 확인 또는 명시적 재요청을 제공하며 사용자 임시글을 보존한다.
-- 현재 계약은 사용자 제공 백엔드 2.3.0 전환 가이드다. command/ticket/revision/Idempotency-Key를 추가하거나 이전 구조로 자동 재실행하지 않는다.
-- 서버 미구현 목록·상세·전체 삭제·분석은 연결을 보류하고 영향과 필요한 데이터를 루트 공백 문서에 기록한다.
+- 현재 계약은 사용자 제공 백엔드 2.4.2 전환 가이드다. command/ticket/revision/Idempotency-Key를 추가하거나 이전 구조로 자동 재실행하지 않는다.
+- 가입·모든 데이터 삭제는 응답 유실 시 재전송하지 않고 세션 재교환 mode로 확인한다. 서버 확인이 남은 정책·운영 값은 루트 공백 문서에 기록한다.
 - OpenAPI와 계약 예시는 고정 생성·검증 명령으로 우선 소비한다.
