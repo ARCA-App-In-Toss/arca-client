@@ -7,6 +7,7 @@ import { AnalyticsQueue } from '../domain/analytics/analyticsQueue.ts';
 import { ArchiveChains } from '../domain/archive/archiveChains.ts';
 import { AnswerWriteCoordinator, type Completion, type SyncEvent } from '../domain/commands/answerWriteCoordinator.ts';
 import { AnswerWriteStore } from '../domain/commands/answerWriteStore.ts';
+import { AllDataDelete } from '../domain/deletion/allDataDelete.ts';
 import { DraftRepository } from '../domain/drafts/draftRepository.ts';
 import type { PastDraftEntry } from '../domain/drafts/pastDraftEntry.ts';
 import type { AnswerDetail, Today } from '../domain/models.ts';
@@ -35,6 +36,7 @@ export interface AppServices {
   nickname: NicknameCoordinator;
   analytics: AnalyticsQueue;
   archive: ArchiveChains;
+  deleteAll: AllDataDelete;
   completions: Map<string, Completion>;
   answerRefs: Map<string, string>;
   draftRefs: Map<string, PastDraftEntry>;
@@ -83,6 +85,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
       if (s?.accountScope) queryClient.setQueryData(queryKeys.member(s.ownerScope, s.accountScope), profile);
     },
   });
+  const deleteAll = new AllDataDelete({ session, api });
   const archive = new ArchiveChains({
     session,
     api,
@@ -253,6 +256,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     nickname,
     analytics,
     archive,
+    deleteAll,
     completions,
     answerRefs,
     draftRefs,

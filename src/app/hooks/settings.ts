@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import type { ExternalOpenResult } from '../../domain/ports/platform.ts';
 import { useAppServices } from '../services.tsx';
 export type SettingsLink = 'terms' | 'privacy' | 'support';
@@ -20,3 +20,17 @@ export function useSettingsLinks() {
   );
 }
 export const appVersion: string = __APP_VERSION__;
+
+export function useAllDataDelete() {
+  const { deleteAll } = useAppServices();
+  const view = useSyncExternalStore(deleteAll.subscribe, deleteAll.getView, deleteAll.getView);
+  const actions = useMemo(
+    () => ({
+      enter: () => deleteAll.reset(),
+      start: () => void deleteAll.start(),
+      recheck: () => void deleteAll.recheck(),
+    }),
+    [deleteAll],
+  );
+  return { view, ...actions };
+}
