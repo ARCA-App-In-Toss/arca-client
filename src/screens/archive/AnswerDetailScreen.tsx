@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router';
 import { useAnswerCommand, usePendingAnswer } from '../../app/hooks/answers.ts';
-import { useAnswer } from '../../app/hooks/archive.ts';
+import { useAnswer, useArchive } from '../../app/hooks/archive.ts';
 import { paths, useAnswerRefs, useArcaNavigate, useRouteState } from '../../app/navigation.ts';
+import { DomainFailure } from '../../domain/failures.ts';
 import {
   InlineStatus,
   PixelAppShell,
@@ -16,6 +17,7 @@ import {
 import { copy } from '../../ui/copy.ts';
 import { formatDateKst, isWhitespaceOnly } from '../../ui/format.ts';
 import { PixelAlertDialog } from '../../ui/PixelAlertDialog.tsx';
+import { useOfflineOnFailure } from '../shared/offline.ts';
 export function AnswerDetailScreen() {
   const state = useRouteState();
   const refs = useAnswerRefs();
@@ -24,6 +26,9 @@ export function AnswerDetailScreen() {
   const command = useAnswerCommand(answerId);
   const pending = usePendingAnswer(answerId);
   const navigate = useArcaNavigate();
+  const { noteDeleted, markStale } = useArchive();
+  const offline = useOfflineOnFailure(detail.error);
+  const missing = detail.error instanceof DomainFailure && detail.error.code === 'ANSWER_NOT_FOUND';
   const [open, setOpen] = useState(false);
   const deleteRef = useRef<HTMLButtonElement | null>(null);
   const busy = command.view.kind === 'working';
@@ -34,22 +39,27 @@ export function AnswerDetailScreen() {
   useEffect(() => {
     if (command.view.kind === 'deleted') {
       command.consume();
-      navigate(paths.today, {}, { replace: true });
+      noteDeleted();
+      navigate(paths.archive, {}, { replace: true });
     }
-  }, [command, navigate]);
-  if (!answerId) return <Navigate to={paths.today} replace />;
+  }, [command, navigate, noteDeleted]);
+  useEffect(() => {
+    if (missing) markStale();
+  }, [missing, markStale]);
+  if (!answerId || missing) return <Navigate to={paths.archive} replace />;
   return (
     <PixelAppShell>
       <div className="arca-screen-header">
-        <PixelIconButton label={copy['CPY-COM-005']} icon="back" onClick={() => navigate(paths.today)} />
+        <PixelIconButton label={copy['CPY-COM-005']} icon="back" onClick={() => navigate(paths.archive)} />
         <ScreenTitle>{copy['CPY-F21-001']}</ScreenTitle>
       </div>
       {!detail.data ? (
         detail.isError ? (
           <StatePanel>
-            <p>이 기록을 새로 불러올 수 없어요.</p>
-            <p className="arca-text-secondary">이전 날짜의 기록 조회 기능을 준비하고 있어요.</p>
-            <PixelButton onClick={() => navigate(paths.today)}>오늘로 돌아가기</PixelButton>
+            <p>{offline ? copy['CPY-F21-012'] : copy['CPY-F21-011']}</p>
+            <PixelButton variant="primary" loading={detail.isFetching} onClick={() => void detail.refetch()}>
+              {copy['CPY-F21-013']}
+            </PixelButton>
           </StatePanel>
         ) : (
           <PixelPlaceholder />

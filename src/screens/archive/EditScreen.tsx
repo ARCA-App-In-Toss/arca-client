@@ -6,6 +6,7 @@ import { useCopyText } from '../../app/hooks/device.ts';
 import { useDraftSession } from '../../app/hooks/drafts.ts';
 import { paths, useAnswerRefs, useArcaNavigate, useRouteState } from '../../app/navigation.ts';
 import type { UpdateDraftIdentity } from '../../domain/drafts/draftRepository.ts';
+import { DomainFailure } from '../../domain/failures.ts';
 import type { AnswerDetail } from '../../domain/models.ts';
 import {
   InlineStatus,
@@ -22,19 +23,27 @@ import { copy, fill } from '../../ui/copy.ts';
 import { formatCount, formatDateKst } from '../../ui/format.ts';
 import { useAnswerInput } from '../shared/compose.ts';
 import { LeaveConfirmDialog, useLeaveGuard } from '../shared/leaveGuard.tsx';
+import { useOfflineOnFailure } from '../shared/offline.ts';
 export function EditScreen() {
   const state = useRouteState();
   const refs = useAnswerRefs();
   const id = refs.resolve(state?.answerRef);
   const detail = useAnswer(id);
-  if (!id) return <Navigate to={paths.today} replace />;
+  const offline = useOfflineOnFailure(detail.error);
+  const missing = detail.error instanceof DomainFailure && detail.error.code === 'ANSWER_NOT_FOUND';
+  if (!id || missing) return <Navigate to={paths.archive} replace />;
   return detail.data ? (
     <EditForm answer={detail.data} />
   ) : (
     <PixelAppShell>
       <ScreenTitle>{copy['CPY-F22-001']}</ScreenTitle>
       {detail.isError ? (
-        <StatePanel>이 기록을 불러올 수 없어요. 오늘 화면에서 다시 확인해 주세요.</StatePanel>
+        <StatePanel>
+          <p>{offline ? copy['CPY-F21-012'] : copy['CPY-F21-011']}</p>
+          <PixelButton variant="primary" loading={detail.isFetching} onClick={() => void detail.refetch()}>
+            {copy['CPY-F21-013']}
+          </PixelButton>
+        </StatePanel>
       ) : (
         <PixelPlaceholder />
       )}
