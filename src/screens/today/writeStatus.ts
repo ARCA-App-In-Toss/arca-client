@@ -1,7 +1,6 @@
 import type { WriteView } from '../../domain/commands/answerWriteCoordinator.ts';
 import { copy } from '../../ui/copy.ts';
 import { type CopyResult, copyResultMessage, type KeepState } from '../shared/compose.ts';
-
 export interface WriteStatusInput {
   view: WriteView;
   workingShown: boolean;
@@ -14,64 +13,29 @@ export interface WriteStatusInput {
   copyResult: CopyResult;
   saveProblem: boolean;
 }
-
-export function writeStatus(input: WriteStatusInput): {
-  message: string | null;
-  danger: boolean;
-  announcement: string | null;
-} {
-  const { view, keep } = input;
+export function writeStatus(input: WriteStatusInput) {
   const parts: string[] = [];
   let announcement: string | null = null;
   if (input.loading) parts.push(copy['CPY-F11-009']);
-  if (input.semaStopped) {
-    if (keep.failed) parts.push(copy['CPY-F11-034']);
-    else if (keep.unsettled) parts.push(copy['CPY-F11-020'], copy['CPY-COM-008']);
-    else parts.push(copy['CPY-F11-033']);
-  } else {
-    switch (view.kind) {
-      case 'working':
-        if (input.workingShown) parts.push(view.stage === 'confirming' ? copy['CPY-F11-024'] : copy['CPY-F11-019']);
-        break;
-      case 'unconfirmed':
-        if (view.recovery === 'cleanUpExpired') {
-          parts.push(copy['CPY-COM-022']);
-          if (keep.failed) parts.push(copy['CPY-F11-013']);
-          else if (keep.unsettled) parts.push(copy['CPY-COM-008']);
-          break;
-        }
-        if (keep.failed) parts.push(copy['CPY-F11-027']);
-        else if (keep.unsettled) parts.push(copy['CPY-F11-044'], copy['CPY-COM-008']);
-        else if (!view.trackerKept) parts.push(copy['CPY-F11-042']);
-        else parts.push(copy['CPY-F11-026']);
-        break;
-      case 'notApplied':
-      case 'rejected':
-        parts.push(
-          view.kind === 'notApplied' && view.code === 'COMMAND_CLOSED' ? copy['CPY-COM-021'] : copy['CPY-F11-020'],
-        );
-        if (keep.failed) parts.push(copy['CPY-F11-013']);
-        else if (keep.unsettled) parts.push(copy['CPY-COM-008']);
-        break;
-      case 'localFailure':
-        parts.push(copy['CPY-F11-013']);
-        break;
-      case 'reconciled':
-        if (view.reconciliation.nextAction === 'CREATE_CURRENT_DAY') parts.push(copy['CPY-COM-025']);
-        if (keep.failed) parts.push(copy['CPY-F11-013']);
-        break;
-      default:
-        if (input.switchBlocked) parts.push(copy['CPY-F11-017']);
-        else if (keep.failed) parts.push(copy['CPY-F11-013']);
-        else if (input.restoredClean) announcement = copy['CPY-F11-012'];
-        else announcement = input.announcement;
-    }
-  }
+  if (input.semaStopped) parts.push(copy['CPY-F11-033']);
+  else if (input.view.kind === 'working' && input.workingShown)
+    parts.push(input.view.stage === 'confirming' ? copy['CPY-F11-024'] : copy['CPY-F11-019']);
+  else if (input.view.kind === 'unconfirmed')
+    parts.push('저장 결과를 확인하지 못했어요. 글은 기기에 남아 있어요. 오늘 기록을 확인하거나 다시 저장해 주세요.');
+  else if (input.view.kind === 'rejected')
+    parts.push(
+      input.view.code === 'ANSWER_ALREADY_EXISTS'
+        ? '오늘의 기록이 이미 있어요. 작성한 글을 복사해 두고 오늘 기록을 확인해 주세요.'
+        : copy['CPY-F11-020'],
+    );
+  else if (input.view.kind === 'localFailure' || input.keep.failed) parts.push(copy['CPY-F11-013']);
+  else if (input.switchBlocked) parts.push(copy['CPY-F11-017']);
+  else announcement = input.restoredClean ? copy['CPY-F11-012'] : input.announcement;
   const copied = copyResultMessage(input.copyResult);
   if (copied) parts.push(copied);
   return {
-    message: parts.length > 0 ? parts.join(' ') : null,
-    danger: input.saveProblem || keep.failed || input.copyResult === 'failed' || parts.includes(copy['CPY-F11-027']),
+    message: parts.length ? parts.join(' ') : null,
+    danger: input.saveProblem || input.keep.failed || input.copyResult === 'failed',
     announcement,
   };
 }

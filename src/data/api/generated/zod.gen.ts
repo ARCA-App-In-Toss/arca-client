@@ -4,20 +4,43 @@ import * as z from 'zod';
 
 export const zEntityId = z.string().min(1);
 
-export const zRevision = z.string().min(1);
-
-export const zOperationId = z.uuid();
-
 export const zInstant = z.iso.datetime().regex(/Z$/);
 
 export const zKstDate = z.iso.date().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-export const zEmptyInput = z.record(z.string(), z.never());
+export const zMemberProfile = z.object({
+    memberCode: z.string().min(1),
+    nickname: z.string().nullable()
+});
 
-export const zPassengerProfile = z.object({
-    passengerCode: z.string().min(1),
-    nickname: z.string().nullable(),
-    revision: zRevision
+export const zSessionContext = z.union([
+    z.object({
+        mode: z.literal('GUEST'),
+        member: z.null()
+    }),
+    z.object({
+        mode: z.literal('ACTIVE'),
+        member: zMemberProfile
+    })
+]);
+
+export const zSessionResponse = z.object({
+    accessToken: z.string().min(1),
+    expiresAt: zInstant,
+    context: zSessionContext
+});
+
+export const zActiveSessionResponse = z.object({
+    accessToken: z.string().min(1),
+    expiresAt: zInstant,
+    context: z.object({
+        mode: z.literal('ACTIVE'),
+        member: zMemberProfile
+    })
+});
+
+export const zEstablishSessionInput = z.strictObject({
+    anonymousKey: z.string().min(1)
 });
 
 export const zConsentPolicy = z.object({
@@ -28,187 +51,56 @@ export const zConsentPolicy = z.object({
     required: z.boolean()
 });
 
+export const zConsentPoliciesResponse = z.object({
+    consentPolicies: z.array(zConsentPolicy)
+});
+
 export const zConsentReceiptInput = z.strictObject({
     policyId: z.string().min(1),
     version: z.string().min(1),
     agreed: z.literal(true)
 });
 
-export const zAllDataDeleteReceipt = z.object({
-    effect: z.literal('DELETED'),
-    deletedAt: zInstant,
-    consentEvidenceRetainedUntil: zInstant,
-    backupsExpireBy: zInstant
-});
-
-export const zRecentDeletion = z.object({
-    ticketId: zEntityId,
-    deletedGeneration: zEntityId,
-    resultExpiresAt: zInstant,
-    proof: zAllDataDeleteReceipt
-});
-
-export const zActiveSessionContext = z.object({
-    mode: z.literal('ACTIVE'),
-    passenger: zPassengerProfile,
-    dataGeneration: zEntityId
-});
-
-export const zSessionContext = z.union([
-    z.object({
-        mode: z.literal('PRE_PASSENGER'),
-        passenger: z.null()
-    }),
-    zActiveSessionContext,
-    z.object({
-        mode: z.literal('DELETION_RECOVERY'),
-        passenger: z.null(),
-        deletionTicketId: zEntityId,
-        dataGeneration: zEntityId
-    })
-]);
-
-export const zEstablishSessionResponse = z.object({
-    accessToken: z.string().min(1),
-    expiresAt: zInstant,
-    context: zSessionContext,
-    consentPolicies: z.array(zConsentPolicy),
-    recentDeletion: zRecentDeletion.optional()
-});
-
-export const zEstablishSessionInput = z.strictObject({
-    anonymousKey: z.string().min(1)
-});
-
-export const zCreatePassengerInput = z.strictObject({
+export const zCreateMemberInput = z.strictObject({
     consents: z.array(zConsentReceiptInput).min(1)
 });
 
-export const zCreatePassengerResponse = z.object({
-    accessToken: z.string().min(1),
-    expiresAt: zInstant,
-    context: zActiveSessionContext,
-    consentPolicies: z.array(zConsentPolicy),
-    recentDeletion: zRecentDeletion.optional()
+export const zUpdateNicknameInput = z.strictObject({
+    nickname: z.string().nullable()
 });
 
-export const zSetNicknameInput = z.strictObject({
-    nickname: z.string().nullable(),
-    expectedRevision: zRevision
-});
-
-export const zNicknameReceipt = z.object({
-    operationId: zOperationId,
-    profile: zPassengerProfile,
-    resultExpiresAt: zInstant
-});
-
-export const zQuestionSnapshot = z.object({
+export const zQuestion = z.object({
     questionId: zEntityId,
-    version: z.string().min(1),
-    role: z.enum(['PRIMARY', 'ALTERNATE']),
     text: z.string()
 });
 
 export const zSema = z.object({
     dailySemaId: zEntityId,
     semaId: zEntityId,
-    version: z.string().min(1),
     semaCode: z.string().min(1),
     dateKst: zKstDate,
-    primaryQuestion: zQuestionSnapshot,
-    alternateQuestion: zQuestionSnapshot
+    primaryQuestion: zQuestion,
+    alternateQuestion: zQuestion
 });
 
-export const zExcerptProfile = z.enum([
-    'COMPACT',
-    'STANDARD',
-    'EXPANDED'
-]);
-
-export const zExcerpt = z.object({
-    profile: zExcerptProfile,
-    limits: z.object({
-        maxGraphemes: z.int().gte(1),
-        maxLogicalLines: z.int().gte(1)
-    }),
-    sourceRevision: zRevision,
-    text: z.string(),
-    isTruncated: z.boolean()
-});
-
-export const zExcerptAvailability = z.union([
-    z.object({
-        state: z.literal('AVAILABLE'),
-        value: zExcerpt
-    }),
-    z.object({
-        state: z.literal('UNAVAILABLE'),
-        retryable: z.boolean()
-    })
-]);
-
-export const zCountSnapshot = z.object({
-    count: z.int().gte(0),
-    observedAt: zInstant
-});
-
-export const zCountAvailability = z.union([
-    z.object({
-        state: z.literal('AVAILABLE'),
-        value: zCountSnapshot
-    }),
-    z.object({
-        state: z.literal('UNAVAILABLE'),
-        retryable: z.boolean()
-    })
-]);
-
-export const zAnswerCore = z.object({
-    answerId: zEntityId,
-    revision: zRevision,
-    dailySemaId: zEntityId,
-    semaId: zEntityId,
-    semaVersion: z.string().min(1),
-    semaCode: z.string().min(1),
-    createdAt: zInstant,
-    updatedAt: zInstant,
-    createdDateKst: zKstDate,
-    isEdited: z.boolean(),
-    question: zQuestionSnapshot
+export const zAnswerCount = z.object({
+    count: z.int().gte(0)
 });
 
 export const zAnswerDetail = z.object({
     answerId: zEntityId,
-    revision: zRevision,
     dailySemaId: zEntityId,
     semaId: zEntityId,
-    semaVersion: z.string().min(1),
     semaCode: z.string().min(1),
     createdAt: zInstant,
     updatedAt: zInstant,
     createdDateKst: zKstDate,
     isEdited: z.boolean(),
-    question: zQuestionSnapshot,
+    question: zQuestion,
     content: z.string()
 });
 
-export const zExcerptAnswer = z.object({
-    answerId: zEntityId,
-    revision: zRevision,
-    dailySemaId: zEntityId,
-    semaId: zEntityId,
-    semaVersion: z.string().min(1),
-    semaCode: z.string().min(1),
-    createdAt: zInstant,
-    updatedAt: zInstant,
-    createdDateKst: zKstDate,
-    isEdited: z.boolean(),
-    question: zQuestionSnapshot,
-    excerpt: zExcerptAvailability
-});
-
-export const zTodayReadModel = z.object({
+export const zTodaySemaResponse = z.object({
     dateKst: zKstDate,
     sema: zSema,
     answer: z.union([
@@ -217,78 +109,31 @@ export const zTodayReadModel = z.object({
         }),
         z.object({
             state: z.literal('ANSWERED'),
-            value: zExcerptAnswer
+            value: zAnswerDetail
         })
     ]),
-    activeAnswerCount: zCountAvailability
+    activeAnswerCount: zAnswerCount
 });
 
-export const zAnswerPage = z.object({
-    items: z.array(zExcerptAnswer).max(20),
-    nextCursor: z.string().min(1).nullable(),
-    pageSnapshotAt: zInstant
+export const zCreateAnswerInput = z.strictObject({
+    dailySemaId: zEntityId,
+    semaId: zEntityId,
+    questionId: zEntityId,
+    content: z.string()
 });
 
-export const zPrepareAnswerWriteInput = z.union([
-    z.strictObject({
-        mode: z.literal('CREATE'),
-        dailySemaId: zEntityId,
-        semaId: zEntityId,
-        semaVersion: z.string().min(1),
-        questionId: zEntityId,
-        questionVersion: z.string().min(1)
-    }),
-    z.strictObject({
-        mode: z.literal('UPDATE'),
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    })
-]);
-
-export const zPrepareAnswerDeleteInput = z.strictObject({
-    answerId: zEntityId,
-    expectedRevision: zRevision
+export const zUpdateAnswerInput = z.strictObject({
+    content: z.string()
 });
 
-export const zExecuteCommandInput = z.union([
-    z.strictObject({
-        kind: z.literal('ANSWER_WRITE'),
-        content: z.string()
-    }),
-    z.strictObject({
-        kind: z.literal('ANSWER_DELETE')
-    }),
-    z.strictObject({
-        kind: z.literal('ALL_DATA_DELETE')
-    })
-]);
+export const zSaveAnswerResult = z.object({
+    answer: zAnswerDetail,
+    activeAnswerCount: zAnswerCount
+});
 
-export const zDomainError = z.union([
-    z.strictObject({
-        code: z.literal('ANSWER_CONTENT_INVALID'),
-        category: z.literal('VALIDATION')
-    }),
-    z.strictObject({
-        code: z.literal('ANSWER_NOT_FOUND'),
-        category: z.literal('VALIDATION')
-    }),
-    z.strictObject({
-        code: z.literal('REVISION_CONFLICT'),
-        category: z.literal('CONFLICT')
-    }),
-    z.strictObject({
-        code: z.literal('COMMAND_CLOSED'),
-        category: z.literal('CONFLICT')
-    }),
-    z.strictObject({
-        code: z.literal('COMMAND_EXPIRED'),
-        category: z.literal('CONFLICT')
-    }),
-    z.strictObject({
-        code: z.literal('ALL_DATA_DELETE_FAILED'),
-        category: z.literal('MAINTENANCE')
-    })
-]);
+export const zDeleteAnswerResult = z.object({
+    activeAnswerCount: zAnswerCount
+});
 
 export const zApiError = z.union([
     z.strictObject({
@@ -297,37 +142,33 @@ export const zApiError = z.union([
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('ANONYMOUS_KEY_INVALID'),
-        category: z.literal('AUTH'),
-        requestId: z.string().min(1)
-    }),
-    z.strictObject({
-        code: z.literal('SESSION_RECOVERY_REQUIRED'),
-        category: z.literal('AUTH'),
-        requestId: z.string().min(1),
-        recovery: z.strictObject({
-            kind: z.literal('REESTABLISH_SESSION'),
-            recoveryAllowed: z.literal(true)
-        })
-    }),
-    z.strictObject({
-        code: z.literal('SESSION_INVALID'),
-        category: z.literal('AUTH'),
-        requestId: z.string().min(1)
-    }),
-    z.strictObject({
-        code: z.literal('SESSION_SCOPE_INSUFFICIENT'),
-        category: z.literal('AUTH'),
-        requestId: z.string().min(1)
-    }),
-    z.strictObject({
-        code: z.literal('PASSENGER_NOT_FOUND'),
+        code: z.literal('ENDPOINT_NOT_FOUND'),
         category: z.literal('VALIDATION'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('PASSENGER_ALREADY_EXISTS'),
-        category: z.literal('CONFLICT'),
+        code: z.literal('METHOD_NOT_SUPPORTED'),
+        category: z.literal('VALIDATION'),
+        requestId: z.string().min(1)
+    }),
+    z.strictObject({
+        code: z.literal('MEDIA_TYPE_NOT_ACCEPTABLE'),
+        category: z.literal('VALIDATION'),
+        requestId: z.string().min(1)
+    }),
+    z.strictObject({
+        code: z.literal('MEDIA_TYPE_NOT_SUPPORTED'),
+        category: z.literal('VALIDATION'),
+        requestId: z.string().min(1)
+    }),
+    z.strictObject({
+        code: z.literal('MEMBER_NOT_FOUND'),
+        category: z.literal('VALIDATION'),
+        requestId: z.string().min(1)
+    }),
+    z.strictObject({
+        code: z.literal('ANSWER_NOT_FOUND'),
+        category: z.literal('VALIDATION'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
@@ -366,8 +207,8 @@ export const zApiError = z.union([
         })
     }),
     z.strictObject({
-        code: z.literal('ANSWER_ALREADY_EXISTS'),
-        category: z.literal('CONFLICT'),
+        code: z.literal('ANSWER_CONTENT_INVALID'),
+        category: z.literal('VALIDATION'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
@@ -376,44 +217,48 @@ export const zApiError = z.union([
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('COMMAND_ALREADY_PENDING'),
-        category: z.literal('CONFLICT'),
+        code: z.literal('ANONYMOUS_KEY_INVALID'),
+        category: z.literal('AUTH'),
+        requestId: z.string().min(1)
+    }),
+    z.strictObject({
+        code: z.literal('SESSION_INVALID'),
+        category: z.literal('AUTH'),
+        requestId: z.string().min(1)
+    }),
+    z.strictObject({
+        code: z.literal('SESSION_RECOVERY_REQUIRED'),
+        category: z.literal('AUTH'),
         requestId: z.string().min(1),
         recovery: z.strictObject({
-            kind: z.literal('QUERY_COMMAND'),
-            ticketId: zEntityId
+            kind: z.literal('REESTABLISH_SESSION'),
+            recoveryAllowed: z.literal(true)
         })
     }),
     z.strictObject({
-        code: z.literal('COMMAND_NOT_FOUND'),
-        category: z.literal('VALIDATION'),
+        code: z.literal('SESSION_SCOPE_INSUFFICIENT'),
+        category: z.literal('AUTH'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('COMMAND_PAYLOAD_MISMATCH'),
-        category: z.literal('VALIDATION'),
-        requestId: z.string().min(1)
-    }),
-    z.strictObject({
-        code: z.literal('IDEMPOTENCY_KEY_REUSED'),
+        code: z.literal('MEMBER_ALREADY_EXISTS'),
         category: z.literal('CONFLICT'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('COMMAND_NOT_TERMINAL'),
+        code: z.literal('ANSWER_ALREADY_EXISTS'),
         category: z.literal('CONFLICT'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('OPERATION_RESULT_EXPIRED'),
-        category: z.literal('CONFLICT'),
+        code: z.literal('INTERNAL_ERROR'),
+        category: z.literal('MAINTENANCE'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('RATE_LIMITED'),
-        category: z.literal('RATE_LIMIT'),
-        requestId: z.string().min(1),
-        retryAfterSeconds: z.int().gte(0).optional()
+        code: z.literal('DATABASE_ERROR'),
+        category: z.literal('MAINTENANCE'),
+        requestId: z.string().min(1)
     }),
     z.strictObject({
         code: z.literal('MAINTENANCE'),
@@ -422,19 +267,15 @@ export const zApiError = z.union([
         retryAfterSeconds: z.int().gte(0).optional()
     }),
     z.strictObject({
-        code: z.literal('INTERNAL_ERROR'),
+        code: z.literal('SEMA_NOT_FOUND'),
         category: z.literal('MAINTENANCE'),
         requestId: z.string().min(1)
     }),
     z.strictObject({
-        code: z.literal('ANSWER_NOT_FOUND'),
-        category: z.literal('VALIDATION'),
-        requestId: z.string().min(1)
-    }),
-    z.strictObject({
-        code: z.literal('REVISION_CONFLICT'),
-        category: z.literal('CONFLICT'),
-        requestId: z.string().min(1)
+        code: z.literal('RATE_LIMITED'),
+        category: z.literal('RATE_LIMIT'),
+        requestId: z.string().min(1),
+        retryAfterSeconds: z.int().gte(0).optional()
     })
 ]);
 
@@ -442,737 +283,65 @@ export const zApiErrorEnvelope = z.strictObject({
     error: zApiError
 });
 
-export const zAnswerWriteReceipt = z.object({
-    answerId: zEntityId,
-    revision: zRevision,
-    mode: z.enum(['CREATED', 'UPDATED']),
-    acceptedDateKst: zKstDate
-});
-
-export const zAnswerDeleteReceipt = z.object({
-    answerId: zEntityId,
-    effect: z.enum(['DELETED', 'ALREADY_ABSENT']),
-    deletedAt: zInstant
-});
-
-export const zAnswerWritePresentation = z.union([
-    z.object({
-        state: z.literal('AVAILABLE'),
-        value: z.object({
-            question: zQuestionSnapshot,
-            excerpt: zExcerptAvailability,
-            activeAnswerCount: zCountAvailability
-        })
-    }),
-    z.object({
-        state: z.literal('UNAVAILABLE'),
-        retryable: z.boolean()
-    }),
-    z.object({
-        state: z.literal('ACKNOWLEDGED')
-    }),
-    z.object({
-        state: z.literal('RESOURCE_CHANGED')
-    })
-]);
-
-export const zAnswerDeletePresentation = z.union([
-    z.object({
-        state: z.literal('AVAILABLE'),
-        value: z.object({
-            activeAnswerCount: zCountAvailability
-        })
-    }),
-    z.object({
-        state: z.literal('UNAVAILABLE'),
-        retryable: z.boolean()
-    }),
-    z.object({
-        state: z.literal('ACKNOWLEDGED')
-    })
-]);
-
-export const zReconciliation = z.union([
-    z.object({
-        checkedAt: zInstant,
-        nextAction: z.enum([
-            'CREATE_CURRENT_DAY',
-            'RETURN_TODAY',
-            'RETURN_ARCHIVE'
-        ])
-    }),
-    z.object({
-        checkedAt: zInstant,
-        nextAction: z.literal('REVIEW_CURRENT_ANSWER'),
-        answerId: zEntityId,
-        revision: zRevision
-    })
-]);
-
-export const zAnswerWritePrepared = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_WRITE'),
-    target: z.union([
-        z.object({
-            mode: z.literal('CREATE'),
-            dailySemaId: zEntityId
-        }),
-        z.object({
-            mode: z.literal('UPDATE'),
-            answerId: zEntityId,
-            expectedRevision: zRevision
-        })
-    ]),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('PREPARED')
-});
-
-export const zAnswerWriteExecuting = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_WRITE'),
-    target: z.union([
-        z.object({
-            mode: z.literal('CREATE'),
-            dailySemaId: zEntityId
-        }),
-        z.object({
-            mode: z.literal('UPDATE'),
-            answerId: zEntityId,
-            expectedRevision: zRevision
-        })
-    ]),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('EXECUTING')
-});
-
-export const zAnswerWriteSucceeded = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_WRITE'),
-    target: z.union([
-        z.object({
-            mode: z.literal('CREATE'),
-            dailySemaId: zEntityId
-        }),
-        z.object({
-            mode: z.literal('UPDATE'),
-            answerId: zEntityId,
-            expectedRevision: zRevision
-        })
-    ]),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('SUCCEEDED'),
-    completedAt: zInstant,
-    resultExpiresAt: zInstant,
-    proof: zAnswerWriteReceipt,
-    presentation: zAnswerWritePresentation
-});
-
-export const zAnswerWriteNotApplied = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_WRITE'),
-    target: z.union([
-        z.object({
-            mode: z.literal('CREATE'),
-            dailySemaId: zEntityId
-        }),
-        z.object({
-            mode: z.literal('UPDATE'),
-            answerId: zEntityId,
-            expectedRevision: zRevision
-        })
-    ]),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('NOT_APPLIED'),
-    completedAt: zInstant,
-    resultExpiresAt: zInstant,
-    error: z.union([
-        z.strictObject({
-            code: z.literal('ANSWER_CONTENT_INVALID'),
-            category: z.literal('VALIDATION')
-        }),
-        z.strictObject({
-            code: z.literal('ANSWER_NOT_FOUND'),
-            category: z.literal('VALIDATION')
-        }),
-        z.strictObject({
-            code: z.literal('REVISION_CONFLICT'),
-            category: z.literal('CONFLICT')
-        }),
-        z.strictObject({
-            code: z.literal('COMMAND_CLOSED'),
-            category: z.literal('CONFLICT')
-        }),
-        z.strictObject({
-            code: z.literal('COMMAND_EXPIRED'),
-            category: z.literal('CONFLICT')
-        })
-    ])
-});
-
-export const zAnswerWriteClosedOutcomeUnavailable = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_WRITE'),
-    target: z.union([
-        z.object({
-            mode: z.literal('CREATE'),
-            dailySemaId: zEntityId
-        }),
-        z.object({
-            mode: z.literal('UPDATE'),
-            answerId: zEntityId,
-            expectedRevision: zRevision
-        })
-    ]),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('CLOSED_OUTCOME_UNAVAILABLE'),
-    executionSealed: z.literal(true),
-    reconciliation: zReconciliation.optional()
-});
-
-export const zAnswerDeletePrepared = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_DELETE'),
-    target: z.object({
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    }),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('PREPARED')
-});
-
-export const zAnswerDeleteExecuting = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_DELETE'),
-    target: z.object({
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    }),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('EXECUTING')
-});
-
-export const zAnswerDeleteSucceeded = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_DELETE'),
-    target: z.object({
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    }),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('SUCCEEDED'),
-    completedAt: zInstant,
-    resultExpiresAt: zInstant,
-    proof: zAnswerDeleteReceipt,
-    presentation: zAnswerDeletePresentation
-});
-
-export const zAnswerDeleteNotApplied = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_DELETE'),
-    target: z.object({
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    }),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('NOT_APPLIED'),
-    completedAt: zInstant,
-    resultExpiresAt: zInstant,
-    error: z.union([
-        z.strictObject({
-            code: z.literal('ANSWER_NOT_FOUND'),
-            category: z.literal('VALIDATION')
-        }),
-        z.strictObject({
-            code: z.literal('REVISION_CONFLICT'),
-            category: z.literal('CONFLICT')
-        }),
-        z.strictObject({
-            code: z.literal('COMMAND_CLOSED'),
-            category: z.literal('CONFLICT')
-        }),
-        z.strictObject({
-            code: z.literal('COMMAND_EXPIRED'),
-            category: z.literal('CONFLICT')
-        })
-    ])
-});
-
-export const zAnswerDeleteClosedOutcomeUnavailable = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_DELETE'),
-    target: z.object({
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    }),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('CLOSED_OUTCOME_UNAVAILABLE'),
-    executionSealed: z.literal(true),
-    reconciliation: zReconciliation.optional()
-});
-
-export const zAllDataDeletePrepared = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ALL_DATA_DELETE'),
-    target: z.record(z.string(), z.unknown()),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('PREPARED')
-});
-
-export const zAllDataDeleteExecuting = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ALL_DATA_DELETE'),
-    target: z.record(z.string(), z.unknown()),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('EXECUTING')
-});
-
-export const zAllDataDeleteSucceeded = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ALL_DATA_DELETE'),
-    target: z.record(z.string(), z.unknown()),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('SUCCEEDED'),
-    completedAt: zInstant,
-    resultExpiresAt: zInstant,
-    proof: zAllDataDeleteReceipt
-});
-
-export const zAllDataDeleteNotApplied = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ALL_DATA_DELETE'),
-    target: z.record(z.string(), z.unknown()),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('NOT_APPLIED'),
-    completedAt: zInstant,
-    resultExpiresAt: zInstant,
-    error: z.union([
-        z.strictObject({
-            code: z.literal('COMMAND_CLOSED'),
-            category: z.literal('CONFLICT')
-        }),
-        z.strictObject({
-            code: z.literal('COMMAND_EXPIRED'),
-            category: z.literal('CONFLICT')
-        }),
-        z.strictObject({
-            code: z.literal('ALL_DATA_DELETE_FAILED'),
-            category: z.literal('MAINTENANCE')
-        })
-    ])
-});
-
-export const zAllDataDeleteClosedOutcomeUnavailable = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ALL_DATA_DELETE'),
-    target: z.record(z.string(), z.unknown()),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('CLOSED_OUTCOME_UNAVAILABLE'),
-    executionSealed: z.literal(true),
-    reconciliation: zReconciliation.optional()
-});
-
-export const zAnswerWriteCommandResult = z.union([
-    zAnswerWritePrepared,
-    zAnswerWriteExecuting,
-    zAnswerWriteSucceeded,
-    zAnswerWriteNotApplied,
-    zAnswerWriteClosedOutcomeUnavailable
-]);
-
-export const zAnswerDeleteCommandResult = z.union([
-    zAnswerDeletePrepared,
-    zAnswerDeleteExecuting,
-    zAnswerDeleteSucceeded,
-    zAnswerDeleteNotApplied,
-    zAnswerDeleteClosedOutcomeUnavailable
-]);
-
-export const zAllDataDeleteCommandResult = z.union([
-    zAllDataDeletePrepared,
-    zAllDataDeleteExecuting,
-    zAllDataDeleteSucceeded,
-    zAllDataDeleteNotApplied,
-    zAllDataDeleteClosedOutcomeUnavailable
-]);
-
-export const zCommandTicket = z.union([
-    zAnswerWritePrepared,
-    zAnswerDeletePrepared,
-    zAllDataDeletePrepared
-]);
-
-export const zExecutingCommandResult = z.union([
-    zAnswerWriteExecuting,
-    zAnswerDeleteExecuting,
-    zAllDataDeleteExecuting
-]);
-
-export const zSettledCommandResult = z.union([
-    zAnswerWriteSucceeded,
-    zAnswerWriteNotApplied,
-    zAnswerWriteClosedOutcomeUnavailable,
-    zAnswerDeleteSucceeded,
-    zAnswerDeleteNotApplied,
-    zAnswerDeleteClosedOutcomeUnavailable,
-    zAllDataDeleteSucceeded,
-    zAllDataDeleteNotApplied,
-    zAllDataDeleteClosedOutcomeUnavailable
-]);
-
-export const zCommandResult = z.union([
-    zAnswerWritePrepared,
-    zAnswerWriteExecuting,
-    zAnswerWriteSucceeded,
-    zAnswerWriteNotApplied,
-    zAnswerWriteClosedOutcomeUnavailable,
-    zAnswerDeletePrepared,
-    zAnswerDeleteExecuting,
-    zAnswerDeleteSucceeded,
-    zAnswerDeleteNotApplied,
-    zAnswerDeleteClosedOutcomeUnavailable,
-    zAllDataDeletePrepared,
-    zAllDataDeleteExecuting,
-    zAllDataDeleteSucceeded,
-    zAllDataDeleteNotApplied,
-    zAllDataDeleteClosedOutcomeUnavailable
-]);
-
-export const zAnswerWriteClosedOutcomeUnavailableReconciled = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_WRITE'),
-    target: z.union([
-        z.object({
-            mode: z.literal('CREATE'),
-            dailySemaId: zEntityId
-        }),
-        z.object({
-            mode: z.literal('UPDATE'),
-            answerId: zEntityId,
-            expectedRevision: zRevision
-        })
-    ]),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('CLOSED_OUTCOME_UNAVAILABLE'),
-    executionSealed: z.literal(true),
-    reconciliation: zReconciliation
-});
-
-export const zAnswerDeleteClosedOutcomeUnavailableReconciled = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ANSWER_DELETE'),
-    target: z.object({
-        answerId: zEntityId,
-        expectedRevision: zRevision
-    }),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('CLOSED_OUTCOME_UNAVAILABLE'),
-    executionSealed: z.literal(true),
-    reconciliation: zReconciliation
-});
-
-export const zAllDataDeleteClosedOutcomeUnavailableReconciled = z.object({
-    ticketId: zEntityId,
-    operationId: zOperationId,
-    kind: z.literal('ALL_DATA_DELETE'),
-    target: z.record(z.string(), z.unknown()),
-    acceptedAt: zInstant,
-    acceptedDateKst: zKstDate,
-    executeBy: zInstant,
-    state: z.literal('CLOSED_OUTCOME_UNAVAILABLE'),
-    executionSealed: z.literal(true),
-    reconciliation: zReconciliation
-});
-
-export const zClosureResult = z.union([
-    zAnswerWriteSucceeded,
-    zAnswerWriteNotApplied,
-    zAnswerWriteClosedOutcomeUnavailableReconciled,
-    zAnswerDeleteSucceeded,
-    zAnswerDeleteNotApplied,
-    zAnswerDeleteClosedOutcomeUnavailableReconciled,
-    zAllDataDeleteSucceeded,
-    zAllDataDeleteNotApplied,
-    zAllDataDeleteClosedOutcomeUnavailableReconciled
-]);
-
-export const zProductEventInput = z.union([
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('onboarding_started'),
-        occurredAt: zInstant,
-        properties: z.record(z.string(), z.never())
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('onboarding_skipped'),
-        occurredAt: zInstant,
-        properties: z.record(z.string(), z.never())
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('today_sema_viewed'),
-        occurredAt: zInstant,
-        properties: z.strictObject({
-            answerState: z.enum(['UNANSWERED', 'ANSWERED'])
-        })
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('alternate_question_viewed'),
-        occurredAt: zInstant,
-        properties: z.record(z.string(), z.never())
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('sema_question_changed'),
-        occurredAt: zInstant,
-        properties: z.strictObject({
-            from: z.enum(['PRIMARY', 'ALTERNATE']),
-            to: z.enum(['PRIMARY', 'ALTERNATE'])
-        })
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('answer_started'),
-        occurredAt: zInstant,
-        properties: z.strictObject({
-            mode: z.enum(['CREATE', 'UPDATE'])
-        })
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('answer_save_failed'),
-        occurredAt: zInstant,
-        properties: z.strictObject({
-            mode: z.enum(['CREATE', 'UPDATE']),
-            certainty: z.enum(['NOT_APPLIED', 'UNKNOWN']),
-            reasonCode: z.enum([
-                'VALIDATION_REJECTED',
-                'DATE_CHANGED',
-                'CONTENT_REPLACED',
-                'CONFLICT',
-                'NETWORK_UNCONFIRMED',
-                'SERVER_UNAVAILABLE',
-                'PROTOCOL_UNCONFIRMED',
-                'COMMAND_CLOSED',
-                'COMMAND_EXPIRED'
-            ])
-        })
-    }),
-    z.strictObject({
-        eventId: zOperationId,
-        schemaVersion: z.literal(1),
-        name: z.literal('archive_viewed'),
-        occurredAt: zInstant,
-        properties: z.strictObject({
-            state: z.enum(['EMPTY', 'NON_EMPTY'])
-        })
-    })
-]);
-
-export const zProductEventBatchInput = z.strictObject({
-    events: z.array(zProductEventInput).min(1).max(20),
-    appVersion: z.string().min(1).optional(),
-    platform: z.enum(['IOS', 'ANDROID']).optional()
-});
-
 export const zEstablishSessionBody = zEstablishSessionInput;
 
 /**
  * 성공
  */
-export const zEstablishSessionResponse2 = zEstablishSessionResponse;
+export const zEstablishSessionResponse = zSessionResponse;
 
 /**
  * 성공
  */
-export const zGetPassengerResponse = zPassengerProfile;
+export const zGetConsentPoliciesResponse = zConsentPoliciesResponse;
 
-export const zCreatePassengerBody = zCreatePassengerInput;
-
-export const zCreatePassengerHeaders = z.object({
-    'Idempotency-Key': zOperationId
-});
+export const zCreateMemberBody = zCreateMemberInput;
 
 /**
  * 성공
  */
-export const zCreatePassengerResponse2 = zCreatePassengerResponse;
-
-export const zSetNicknameBody = zSetNicknameInput;
-
-export const zSetNicknameHeaders = z.object({
-    'Idempotency-Key': zOperationId
-});
+export const zCreateMemberResponse = zActiveSessionResponse;
 
 /**
  * 성공
  */
-export const zSetNicknameResponse = zNicknameReceipt;
+export const zGetMemberResponse = zMemberProfile;
 
-export const zGetTodayQuery = z.object({
-    excerptProfile: zExcerptProfile.optional().default('EXPANDED')
-});
+export const zSetNicknameBody = zUpdateNicknameInput;
 
 /**
  * 성공
  */
-export const zGetTodayResponse = zTodayReadModel;
-
-export const zPrepareAnswerWriteBody = zPrepareAnswerWriteInput;
-
-export const zPrepareAnswerWriteHeaders = z.object({
-    'Idempotency-Key': zOperationId
-});
-
-export const zPrepareAnswerWriteResponse = z.union([
-    zAnswerWriteCommandResult,
-    zAnswerWritePrepared
-]);
-
-export const zExecuteCommandBody = zExecuteCommandInput;
-
-export const zExecuteCommandPath = z.object({
-    ticketId: zEntityId
-});
-
-export const zExecuteCommandResponse = z.union([
-    zSettledCommandResult,
-    zExecutingCommandResult
-]);
-
-export const zGetCommandResultPath = z.object({
-    ticketId: zEntityId
-});
-
-export const zGetCommandResultQuery = z.object({
-    excerptProfile: zExcerptProfile.optional().default('COMPACT')
-});
+export const zSetNicknameResponse = zMemberProfile;
 
 /**
  * 성공
  */
-export const zGetCommandResultResponse = zCommandResult;
+export const zGetTodayResponse = zTodaySemaResponse;
 
-export const zAcknowledgeCommandResultBody = zEmptyInput;
-
-export const zAcknowledgeCommandResultPath = z.object({
-    ticketId: zEntityId
-});
+export const zCreateAnswerBody = zCreateAnswerInput;
 
 /**
  * 성공
  */
-export const zAcknowledgeCommandResultResponse = z.void();
+export const zCreateAnswerResponse = zSaveAnswerResult;
 
-export const zListAnswersQuery = z.object({
-    cursor: z.string().min(1).optional(),
-    excerptProfile: zExcerptProfile.optional().default('STANDARD')
-});
-
-/**
- * 성공
- */
-export const zListAnswersResponse = zAnswerPage;
-
-export const zGetAnswerPath = z.object({
+export const zDeleteAnswerPath = z.object({
     answerId: zEntityId
 });
 
 /**
  * 성공
  */
-export const zGetAnswerResponse = zAnswerDetail;
+export const zDeleteAnswerResponse = zDeleteAnswerResult;
 
-export const zPrepareAnswerDeleteBody = zPrepareAnswerDeleteInput;
+export const zUpdateAnswerBody = zUpdateAnswerInput;
 
-export const zPrepareAnswerDeleteHeaders = z.object({
-    'Idempotency-Key': zOperationId
+export const zUpdateAnswerPath = z.object({
+    answerId: zEntityId
 });
 
-export const zPrepareAnswerDeleteResponse = z.union([
-    zAnswerDeleteCommandResult,
-    zAnswerDeletePrepared
-]);
-
-export const zPrepareAllDataDeleteBody = zEmptyInput;
-
-export const zPrepareAllDataDeleteHeaders = z.object({
-    'Idempotency-Key': zOperationId
-});
-
-export const zPrepareAllDataDeleteResponse = z.union([
-    zAllDataDeleteCommandResult,
-    zAllDataDeletePrepared
-]);
-
-export const zSubmitProductEventBatchBody = zProductEventBatchInput;
-
-export const zCloseCommandBody = zEmptyInput;
-
-export const zCloseCommandPath = z.object({
-    ticketId: zEntityId
-});
-
-export const zCloseCommandResponse = z.union([
-    zClosureResult,
-    zExecutingCommandResult
-]);
+/**
+ * 성공
+ */
+export const zUpdateAnswerResponse = zSaveAnswerResult;

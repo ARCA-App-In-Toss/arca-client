@@ -9,9 +9,7 @@ const identity: CreateDraftIdentity = {
   kind: 'create',
   dailySemaId: 'synthetic-day',
   semaId: 'synthetic-sema',
-  semaVersion: '1',
   questionId: 'synthetic-q1',
-  questionVersion: '1',
 };
 
 let now = 1_000_000;

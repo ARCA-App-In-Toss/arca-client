@@ -2,16 +2,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { queryKeys } from '../../data/query/keys.ts';
 import type { Completion, KeptDraft, WriteView } from '../../domain/commands/answerWriteCoordinator.ts';
-import type { PrepareAnswerCreate, Today } from '../../domain/models.ts';
+import type { AnswerCreate, Today } from '../../domain/models.ts';
 import { useAppServices, useAppSnapshot } from '../services.tsx';
 
 const IDLE: WriteView = { kind: 'idle' };
 
 export interface AnswerWriteHandle {
   view: WriteView;
-  save(input: PrepareAnswerCreate, flushKept: () => Promise<KeptDraft | null>): void;
+  save(input: AnswerCreate, flushKept: () => Promise<KeptDraft | null>): void;
   recheck(): void;
-  close(): void;
+  retry(): void;
   consume(): void;
 }
 
@@ -26,14 +26,14 @@ export function useAnswerWrite(dailySemaId: string | null): AnswerWriteHandle {
 
   const actions = useMemo(
     () => ({
-      save: (input: PrepareAnswerCreate, flushKept: () => Promise<KeptDraft | null>) => {
+      save: (input: AnswerCreate, flushKept: () => Promise<KeptDraft | null>) => {
         void writes.save({ input, flushDraft: flushKept });
       },
       recheck: () => {
         if (dailySemaId) void writes.recheck(dailySemaId);
       },
-      close: () => {
-        if (dailySemaId) void writes.close(dailySemaId);
+      retry: () => {
+        if (dailySemaId) void writes.retry(dailySemaId);
       },
       consume: () => {
         if (dailySemaId) writes.acknowledgeView(dailySemaId);
@@ -62,9 +62,9 @@ export function useCompletionRefresh() {
   const services = useAppServices();
   const { session } = useAppSnapshot();
   return useQuery<Today>({
-    queryKey: queryKeys.today(session?.ownerScope ?? '', session?.generation ?? '', 'COMPACT'),
+    queryKey: queryKeys.today(session?.ownerScope ?? '', session?.accountScope ?? ''),
     enabled: false,
-    queryFn: ({ signal }) => services.session.run('ACTIVE', (auth) => services.api.getToday(auth, 'COMPACT', signal)),
+    queryFn: ({ signal }) => services.session.run('ACTIVE', (auth) => services.api.getToday(auth, signal)),
   });
 }
 
@@ -78,7 +78,7 @@ export function usePendingWrite(dailySemaId: string | null) {
       (found) => {
         if (!active) return;
         setPending(found?.kind === 'unresolved' && found.mode === 'CREATE' ? { questionId: found.questionId } : null);
-        if (found) void writes.recheck(dailySemaId, { quiet: found.kind === 'finishing' });
+        if (found) void writes.recheck(dailySemaId);
       },
       () => {
         if (active) setPending(null);

@@ -8,9 +8,7 @@ const identityFor = (dailySemaId: string, questionId = 'synthetic-q1'): CreateDr
   kind: 'create',
   dailySemaId,
   semaId: `sema-${dailySemaId}`,
-  semaVersion: '1',
   questionId,
-  questionVersion: '1',
 });
 
 async function setup() {
@@ -60,4 +58,14 @@ describe('past drafts (06 §7.4, F10 Sheet)', () => {
     await repository.save(identityFor('day-1'), '이전 형식 합성', at());
     expect((await repository.load(identityFor('day-1')))?.context).toBeNull();
   });
+});
+
+test('removing answer 1 draft never removes answer 11 draft', async () => {
+  const { repository, at } = await setup();
+  await repository.save({ kind: 'update', answerId: '1' }, 'first', at());
+  await repository.save({ kind: 'update', answerId: '11' }, 'eleventh', at());
+  expect(await repository.listUpdateDrafts('1')).toHaveLength(1);
+  await repository.removeAllForAnswer('1');
+  expect(await repository.load({ kind: 'update', answerId: '1' })).toBeNull();
+  expect((await repository.load({ kind: 'update', answerId: '11' }))?.text).toBe('eleventh');
 });

@@ -1,13 +1,7 @@
 import { z } from 'zod';
 import { LocalPersistenceFailure } from '../../domain/failures.ts';
 import type { ClockPort, KeyValueStoragePort } from '../../domain/ports/platform.ts';
-import type {
-  DeletionReceipt,
-  JournalPort,
-  ManifestData,
-  ManifestScope,
-  RootData,
-} from '../../domain/ports/storage.ts';
+import type { JournalPort, ManifestData, ManifestScope, RootData } from '../../domain/ports/storage.ts';
 import { canonicalJson, checksumOf } from './codec.ts';
 
 const SCHEMA_VERSION = 1;
@@ -19,14 +13,6 @@ const zRootData = z.object({
   currentGeneration: z.string().min(1).nullable(),
   routeEpoch: z.int().nonnegative(),
   generations: z.array(z.object({ generation: z.string().min(1), ref: z.string().min(1) })),
-  deletion: z
-    .object({
-      ticketId: z.string().min(1),
-      deletedGeneration: z.string().min(1),
-      resultExpiresAt: z.string().min(1),
-    })
-    .nullable()
-    .optional(),
 });
 
 const zManifestData = z.object({
@@ -246,20 +232,6 @@ export class StorageJournal implements JournalPort {
       const written = await this.writeMeta('root', zRootData, drop);
       await this.writeMeta('root', zRootData, drop);
       return { routeEpoch: written.routeEpoch };
-    });
-  }
-
-  recordDeletion(receipt: DeletionReceipt, routeEpoch: number): Promise<void> {
-    return this.enqueue(async () => {
-      const put = (data: RootData | null): RootData => ({
-        currentGeneration: data?.currentGeneration ?? null,
-        generations: data?.generations ?? [],
-        routeEpoch: Math.max(routeEpoch, data?.routeEpoch ?? 0),
-        deletion: receipt,
-      });
-      const first = await this.readMeta('root', zRootData);
-      await this.writeMeta('root', zRootData, put);
-      if (first.latest) await this.writeMeta('root', zRootData, put);
     });
   }
 

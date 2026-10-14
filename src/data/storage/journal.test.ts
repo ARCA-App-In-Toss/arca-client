@@ -225,11 +225,6 @@ describe('records: pending → record → ready', () => {
 describe('full deletion purge (06 §8.2, §9.4)', () => {
   const oldArea = { kind: 'generation', ref: 'area-old' } as const;
   const newArea = { kind: 'generation', ref: 'area-new' } as const;
-  const receipt = {
-    ticketId: 'synthetic-deletion-1',
-    deletedGeneration: 'gen-old',
-    resultExpiresAt: '2026-10-04T02:00:00Z',
-  };
 
   async function seedOld(journal: StorageJournal) {
     await journal.initArea(oldArea);
@@ -241,21 +236,16 @@ describe('full deletion purge (06 §8.2, §9.4)', () => {
     }));
   }
 
-  test('only the deleted generation known: the whole app storage is wiped, then the receipt is in both root copies', async () => {
+  test('only the deleted generation known: the whole app storage is wiped', async () => {
     const storage = createFakeStorage();
     const journal = journalOn(storage);
     await seedOld(journal);
     storage.data.set('unrelated-orphan', 'x');
-    const { routeEpoch } = await journal.purgeGeneration(oldArea, 'gen-old');
+    await journal.purgeGeneration(oldArea, 'gen-old');
     expect(storage.clearCount).toBe(1);
     expect(storage.data.size).toBe(0);
-    await journal.recordDeletion(receipt, routeEpoch);
-    for (const slot of ['a', 'b'] as const) {
-      const root = JSON.parse(storage.data.get(storageKeys.root(slot)) ?? '{}') as { data: { deletion: unknown } };
-      expect(root.data.deletion).toEqual(receipt);
-    }
     const root = await journal.readRoot();
-    expect(root).toMatchObject({ currentGeneration: null, generations: [], routeEpoch: 4 });
+    expect(root).toBeNull();
   });
 
   test('MS-ALLDEL-004 a newer generation exists: only the old area goes; A/B root tombstone; the new area stays', async () => {

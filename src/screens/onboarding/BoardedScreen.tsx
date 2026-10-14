@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useBlocker } from 'react-router';
+import { useBoardedMember, useNicknameSave } from '../../app/hooks/member.ts';
 import { useFinishBoarding } from '../../app/hooks/onboarding.ts';
-import { useBoardedPassenger, useNicknameSave } from '../../app/hooks/passenger.ts';
 import { paths, useArcaNavigate } from '../../app/navigation.ts';
 import { checkNickname, type NicknameError } from '../../domain/text/nickname.ts';
 import {
@@ -23,7 +23,7 @@ const errorCopy: Record<NicknameError, CopyId> = {
 };
 
 export function BoardedScreen() {
-  const passenger = useBoardedPassenger();
+  const member = useBoardedMember();
   const save = useNicknameSave();
   const navigate = useArcaNavigate();
   const finishBoarding = useFinishBoarding();
@@ -63,7 +63,6 @@ export function BoardedScreen() {
     savingRef.current = false;
     if (result.kind === 'saved') return toToday();
     setSaving(false);
-    if (result.kind === 'expired') input.replace(result.currentNickname ?? '');
     setProblem(nicknameProblem(result, { unsent: 'CPY-F03-017', rejected: 'CPY-F03-015' }));
   };
 
@@ -79,7 +78,7 @@ export function BoardedScreen() {
           <div className="arca-code__pair">
             <dt className="arca-code__label">{copy['CPY-F03-003']}</dt>
             <dd className="arca-code__value">
-              {passenger.data ? fill(copy['CPY-F03-004'], { passengerCode: passenger.data.passengerCode }) : ''}
+              {member.data ? fill(copy['CPY-F03-004'], { memberCode: member.data.memberCode }) : ''}
             </dd>
           </div>
         </dl>

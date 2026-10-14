@@ -21,11 +21,11 @@ const agreementKey = (p: BoardingPolicy) => `${p.policyId}\u0000${p.version}`;
 type Status = { kind: 'idle' } | { kind: 'submitting' } | { kind: 'message'; id: CopyId };
 
 export function BoardingScreen() {
-  const { policies, submit, openPolicy } = useBoarding();
+  const { policies, submit, openPolicy, loading, failed, retry } = useBoarding();
   const [agreed, setAgreed] = useState<ReadonlySet<string>>(() => new Set());
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
-  const allAgreed = policies.length > 0 && policies.every((p) => agreed.has(agreementKey(p)));
+  const allAgreed = !loading && !failed && policies.length > 0 && policies.every((p) => agreed.has(agreementKey(p)));
   const submitting = status.kind === 'submitting';
   const submittingShown = usePendingReveal(submitting);
 
@@ -78,6 +78,13 @@ export function BoardingScreen() {
             );
           })}
         </div>
+        {loading && <InlineStatus message="약관을 불러오고 있어요." />}
+        {failed && (
+          <>
+            <InlineStatus message="약관을 불러오지 못했어요." tone="danger" />
+            <PixelButton onClick={retry}>다시 불러오기</PixelButton>
+          </>
+        )}
         <InlineStatus message={message} tone={status.kind === 'message' ? 'danger' : 'neutral'} />
         <div className="arca-actions">
           {allAgreed ? null : (
@@ -88,6 +95,7 @@ export function BoardingScreen() {
           <PixelButton
             variant="primary"
             loading={submitting}
+            disabled={!allAgreed || submitting}
             aria-disabled={!allAgreed || submitting || undefined}
             aria-describedby={allAgreed ? undefined : 'arca-boarding-reason'}
             onClick={() => void board()}

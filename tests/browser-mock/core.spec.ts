@@ -20,11 +20,11 @@ test('question → write → save → read again in the browser', async ({ page 
   await expect(page).toHaveURL(/\/today\/saved$/);
   await expect(page.locator('.arca-user-text')).toHaveCount(0);
 
-  await page.getByRole('button', { name: '항해 기록 보기' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '항해 기록' })).toBeVisible();
-  await page.locator('.arca-memory-row').first().click();
+  await page.getByRole('button', { name: '오늘의 항해로' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '오늘의 항해' })).toBeVisible();
+  await page.getByRole('button', { name: '내 기억 조각 보기' }).click();
   await expect(page.getByRole('heading', { level: 1, name: '기억 조각' })).toBeFocused();
-  await expect(page.getByRole('region', { name: '내 답변' }).locator('.arca-user-text')).toHaveText(TEXT, {
+  await expect(page.locator('.arca-user-text--reading')).toHaveText(TEXT, {
     useInnerText: false,
   });
   expect(page.url()).not.toMatch(/synthetic|token|answer-/);
@@ -65,4 +65,34 @@ test('MS-CORE-009 / MS-PLATFORM-003 fonts and images blocked: question, writing,
   await page.getByRole('button', { name: '오늘의 항해로' }).click();
   await expect(page.getByRole('heading', { level: 1, name: '오늘의 항해' })).toBeVisible();
   await expect(page.getByRole('button', { name: '내 기억 조각 보기' })).toBeVisible();
+});
+
+test('saved record supports direct edit and delete without commands or historical reads', async ({ page }) => {
+  const unavailable: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith('/v1/commands') || (request.method() === 'GET' && /^\/v1\/answers/.test(url.pathname)))
+      unavailable.push(url.pathname);
+  });
+  await writeAndSave(page);
+  await page.getByRole('button', { name: '내 기억 조각 보기' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '기억 조각' })).toBeVisible();
+  await page.screenshot({ path: `/tmp/arca-api-detail-${test.info().project.name}.png`, fullPage: true });
+  await page.getByRole('button', { name: '수정하기' }).click();
+  const field = page.getByRole('textbox', { name: '내 답변' });
+  await expect(field).toHaveValue(TEXT);
+  await field.fill('브라우저에서 고친 기록\n  ');
+  await page.screenshot({ path: `/tmp/arca-api-edit-${test.info().project.name}.png`, fullPage: true });
+  await page.getByRole('button', { name: '저장하기', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '기억 조각' })).toBeVisible();
+  await expect(page.locator('.arca-user-text--reading')).toHaveText('브라우저에서 고친 기록\n  ', {
+    useInnerText: false,
+  });
+  await page.getByRole('button', { name: '삭제하기' }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog.getByRole('button', { name: '취소' })).toBeFocused();
+  await dialog.getByRole('button', { name: '삭제', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '오늘의 항해' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '답변 작성하기' })).toBeVisible();
+  expect(unavailable).toEqual([]);
 });

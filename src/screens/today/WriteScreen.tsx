@@ -13,7 +13,7 @@ import { useRefreshToday, useToday, useTodayRefreshEvents } from '../../app/hook
 import { useAnswerWrite, useCompletions, usePendingWrite } from '../../app/hooks/writes.ts';
 import { paths, type QuestionRole, useAnswerRefs, useArcaNavigate, useRouteState } from '../../app/navigation.ts';
 import type { CreateDraftIdentity } from '../../domain/drafts/draftRepository.ts';
-import type { PrepareAnswerCreate, TodaySema } from '../../domain/models.ts';
+import type { AnswerCreate, TodaySema } from '../../domain/models.ts';
 import {
   InlineStatus,
   PixelAppShell,
@@ -64,10 +64,7 @@ export function WriteScreen() {
   const liveSema = today.data?.sema ?? null;
   const dayChangedLive = sema !== null && liveSema !== null && liveSema.dailySemaId !== sema.dailySemaId;
   const semaReplacedLive =
-    sema !== null &&
-    liveSema !== null &&
-    liveSema.dailySemaId === sema.dailySemaId &&
-    (liveSema.semaId !== sema.semaId || liveSema.version !== sema.version);
+    sema !== null && liveSema !== null && liveSema.dailySemaId === sema.dailySemaId && liveSema.semaId !== sema.semaId;
   const question = sema && role ? (role === 'PRIMARY' ? sema.primaryQuestion : sema.alternateQuestion) : null;
   const identity = useMemo<CreateDraftIdentity | null>(
     () =>
@@ -76,9 +73,7 @@ export function WriteScreen() {
             kind: 'create',
             dailySemaId: sema.dailySemaId,
             semaId: sema.semaId,
-            semaVersion: sema.version,
             questionId: question.questionId,
-            questionVersion: question.version,
           }
         : null,
     [sema, question],
@@ -134,14 +129,9 @@ export function WriteScreen() {
   }, [view, savedThisVisit, completions, write, navigate, refs, guard.allowLeave]);
 
   const rejectedCode = view.kind === 'rejected' ? view.code : null;
-  const reconciledAction = view.kind === 'reconciled' ? view.reconciliation.nextAction : null;
   const leavingForPast =
     rejectedCode === 'DATE_CHANGED' ||
-    reconciledAction === 'RETURN_TODAY' ||
-    reconciledAction === 'RETURN_ARCHIVE' ||
-    (dayChangedLive &&
-      !input.composing &&
-      (view.kind === 'idle' || view.kind === 'notApplied' || view.kind === 'rejected'));
+    (dayChangedLive && !input.composing && (view.kind === 'idle' || view.kind === 'rejected'));
   const handedOff = useRef(false);
   const latestDraft = useRef(draft);
   latestDraft.current = draft;
@@ -155,7 +145,7 @@ export function WriteScreen() {
       guard.allowLeave();
       write.consume();
       if (current.text === '') {
-        navigate(reconciledAction === 'RETURN_ARCHIVE' ? paths.archive : paths.today, {}, { replace: true });
+        navigate(paths.today, {}, { replace: true });
         return;
       }
       const keep: HandoffKeep = kept
@@ -166,33 +156,27 @@ export function WriteScreen() {
       const draftRef = pastDraftRefs.handOff(identity, { text: current.text, keep, context });
       navigate(paths.pastDraft, { draftRef, pastDraftEntry: 'dateChanged' });
     })();
-  }, [leavingForPast, identity, question, sema, write, navigate, pastDraftRefs, reconciledAction, guard.allowLeave]);
+  }, [leavingForPast, identity, question, sema, write, navigate, pastDraftRefs, guard.allowLeave]);
 
   const semaStopped = rejectedCode === 'SEMA_REPLACED' || (semaReplacedLive && view.kind !== 'working');
-  const reviewCurrent = view.kind === 'reconciled' && view.reconciliation.nextAction === 'REVIEW_CURRENT_ANSWER';
   useEffect(() => {
     if (semaStopped) void latestDraft.current.flush();
   }, [semaStopped]);
 
-  if (
-    role === null ||
-    (today.data?.answer.state === 'ANSWERED' && !savedThisVisit && !dayChangedLive && !reviewCurrent)
-  ) {
+  if (role === null || (today.data?.answer.state === 'ANSWERED' && !savedThisVisit && !dayChangedLive)) {
     return <Navigate to={paths.today} replace />;
   }
 
   const { measured, currentCount } = input;
-  const overflow = measured.overCount > 0;
+  const overflow = measured.overCount > 0 || measured.overCodePoints;
   const loading = !question || draft.load.kind === 'loading';
-  const prepareInput: PrepareAnswerCreate | null =
+  const prepareInput: AnswerCreate | null =
     sema && question
       ? {
           mode: 'CREATE',
           dailySemaId: sema.dailySemaId,
           semaId: sema.semaId,
-          semaVersion: sema.version,
           questionId: question.questionId,
-          questionVersion: question.version,
         }
       : null;
 
@@ -226,10 +210,7 @@ export function WriteScreen() {
 
   const keep = keepStateOf(draft);
   const restoredClean = draft.load.kind === 'ready' && draft.load.restored && draft.status.kind === 'clean';
-  const saveProblem =
-    (view.kind === 'notApplied' && view.code !== 'COMMAND_CLOSED') ||
-    (view.kind === 'rejected' && !semaStopped && !leavingForPast) ||
-    view.kind === 'localFailure';
+  const saveProblem = (view.kind === 'rejected' && !semaStopped && !leavingForPast) || view.kind === 'localFailure';
   const status = writeStatus({
     view,
     workingShown: busyShown,
@@ -242,9 +223,9 @@ export function WriteScreen() {
     copyResult,
     saveProblem,
   });
-  const showCopy = pendingShown || keep.failed || saveProblem || reviewCurrent;
+  const showCopy = pendingShown || keep.failed || saveProblem;
   const leavingSaved = handledSuccess.current || (view.kind === 'succeeded' && savedThisVisit);
-  const textLocked = pending || semaStopped || reviewCurrent || leavingForPast;
+  const textLocked = pending || semaStopped || leavingForPast;
 
   const helpId = 'f11-help';
   return (
@@ -297,7 +278,9 @@ export function WriteScreen() {
             </div>
             {overflow && (
               <p className="arca-field-error" id="f11-error">
-                {fill(copy['CPY-F11-008'], { overCount: formatCount(measured.overCount) })}
+                {measured.overCodePoints
+                  ? '문자 조합이 너무 길어요. 일부 문자를 줄여 주세요.'
+                  : fill(copy['CPY-F11-008'], { overCount: formatCount(measured.overCount) })}
               </p>
             )}
             {draft.status.kind === 'failed' && !pending && (
@@ -329,30 +312,6 @@ export function WriteScreen() {
               {copy['CPY-F11-035']}
             </PixelButton>
           </>
-        ) : view.kind === 'reconciled' && view.reconciliation.nextAction === 'REVIEW_CURRENT_ANSWER' ? (
-          <PixelButton
-            variant="primary"
-            onClick={() => {
-              if (view.reconciliation.nextAction !== 'REVIEW_CURRENT_ANSWER') return;
-              const { answerId } = view.reconciliation;
-              guard.allowLeave();
-              write.consume();
-              navigate(paths.detail, { answerRef: refs.refFor(answerId) });
-            }}
-          >
-            {copy['CPY-COM-024']}
-          </PixelButton>
-        ) : view.kind === 'unconfirmed' && view.recovery ? (
-          <PixelButton
-            variant="primary"
-            onClick={() => {
-              setSavedThisVisit(true);
-              setCopyResult(null);
-              write.close();
-            }}
-          >
-            {view.recovery === 'closePrepared' ? copy['CPY-COM-020'] : copy['CPY-COM-023']}
-          </PixelButton>
         ) : view.kind === 'unconfirmed' ? (
           <PixelButton
             variant="primary"
@@ -370,7 +329,7 @@ export function WriteScreen() {
             loading={busy || leavingSaved}
             disabled={loading || (!busy && !leavingSaved && !measured.savable)}
             onClick={
-              view.kind === 'notApplied' || view.kind === 'rejected' || view.kind === 'reconciled'
+              view.kind === 'rejected'
                 ? () => {
                     write.consume();
                     onSave();
@@ -378,9 +337,10 @@ export function WriteScreen() {
                 : onSave
             }
           >
-            {view.kind === 'notApplied' || view.kind === 'rejected' ? copy['CPY-F11-021'] : copy['CPY-F11-018']}
+            {view.kind === 'rejected' ? copy['CPY-F11-021'] : copy['CPY-F11-018']}
           </PixelButton>
         )}
+        {view.kind === 'unconfirmed' && <PixelButton onClick={() => write.retry()}>다시 저장하기</PixelButton>}
         {showCopy && !semaStopped && (
           <PixelButton variant="ghost" onClick={() => void onCopy()}>
             {copy['CPY-F11-029']}

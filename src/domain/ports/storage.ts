@@ -1,16 +1,9 @@
 export type ManifestScope = { kind: 'pre' } | { kind: 'generation'; ref: string };
 
-export interface DeletionReceipt {
-  ticketId: string;
-  deletedGeneration: string;
-  resultExpiresAt: string;
-}
-
 export interface RootData {
   currentGeneration: string | null;
   routeEpoch: number;
   generations: { generation: string; ref: string }[];
-  deletion?: DeletionReceipt | null | undefined;
 }
 
 export interface ManifestEntry {
@@ -37,5 +30,4 @@ export interface JournalPort {
     scope: ManifestScope & { kind: 'generation' },
     deletedGeneration: string,
   ): Promise<{ routeEpoch: number }>;
-  recordDeletion(receipt: DeletionReceipt, routeEpoch: number): Promise<void>;
 }

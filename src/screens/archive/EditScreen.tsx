@@ -1,13 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router';
-import { useAnswerSaveFailedEvent, useAnswerStartedEvent } from '../../app/hooks/analytics.ts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Navigate } from 'react-router';
 import { useAnswerCommand, usePendingAnswer } from '../../app/hooks/answers.ts';
-import { useAnswer, useArchive } from '../../app/hooks/archive.ts';
+import { useAnswer } from '../../app/hooks/archive.ts';
 import { useCopyText } from '../../app/hooks/device.ts';
-import { useDraftSession, useStaleEditDraft } from '../../app/hooks/drafts.ts';
-import { paths, useAnswerRefs, useRouteState } from '../../app/navigation.ts';
+import { useDraftSession } from '../../app/hooks/drafts.ts';
+import { paths, useAnswerRefs, useArcaNavigate, useRouteState } from '../../app/navigation.ts';
 import type { UpdateDraftIdentity } from '../../domain/drafts/draftRepository.ts';
-import { DomainFailure } from '../../domain/failures.ts';
 import type { AnswerDetail } from '../../domain/models.ts';
 import {
   InlineStatus,
@@ -18,351 +16,139 @@ import {
   PixelTextareaField,
   RecordPanel,
   ScreenTitle,
+  StatePanel,
 } from '../../ui/components.tsx';
 import { copy, fill } from '../../ui/copy.ts';
 import { formatCount, formatDateKst } from '../../ui/format.ts';
-import { PixelAlertDialog } from '../../ui/PixelAlertDialog.tsx';
-import { type CopyResult, copyResultMessage, keepLabel, keepStateOf, useAnswerInput } from '../shared/compose.ts';
+import { useAnswerInput } from '../shared/compose.ts';
 import { LeaveConfirmDialog, useLeaveGuard } from '../shared/leaveGuard.tsx';
-import { editStatus, type RebaseState } from './editStatus.ts';
-
-const KEEP_LABELS = {
-  saving: copy['CPY-F22-009'],
-  kept: copy['CPY-F22-010'],
-  failed: copy['CPY-F22-012'],
-};
-
-type RebaseResult = 'rebased' | 'gone' | 'failed';
-
 export function EditScreen() {
-  const routeState = useRouteState();
+  const state = useRouteState();
   const refs = useAnswerRefs();
-  const answerId = refs.resolve(routeState?.answerRef);
-  const detail = useAnswer(answerId);
-  const pinned = useRef<AnswerDetail | null>(null);
-  pinned.current ??= detail.data ?? null;
-  const [, setRebased] = useState(0);
-  const base = pinned.current;
-  if (!answerId) return <Navigate to={paths.archive} replace />;
-  if (!base) return <EditLoading />;
-  const rebase = async (): Promise<RebaseResult> => {
-    const result = await detail.refetch();
-    if (result.error instanceof DomainFailure && result.error.code === 'ANSWER_NOT_FOUND') return 'gone';
-    if (!result.data || result.isError) return 'failed';
-    pinned.current = result.data;
-    setRebased((n) => n + 1);
-    return 'rebased';
-  };
-  return <EditForm key={base.revision} answerId={answerId} base={base} onRebase={rebase} />;
-}
-
-function EditLoading() {
-  return (
-    <PixelAppShell className="arca-page--compose">
-      <div className="arca-screen-header">
-        <ScreenTitle>{copy['CPY-F22-001']}</ScreenTitle>
-      </div>
-      <RecordPanel>
+  const id = refs.resolve(state?.answerRef);
+  const detail = useAnswer(id);
+  if (!id) return <Navigate to={paths.today} replace />;
+  return detail.data ? (
+    <EditForm answer={detail.data} />
+  ) : (
+    <PixelAppShell>
+      <ScreenTitle>{copy['CPY-F22-001']}</ScreenTitle>
+      {detail.isError ? (
+        <StatePanel>이 기록을 불러올 수 없어요. 오늘 화면에서 다시 확인해 주세요.</StatePanel>
+      ) : (
         <PixelPlaceholder />
-      </RecordPanel>
+      )}
     </PixelAppShell>
   );
 }
-
-function EditForm({
-  answerId,
-  base,
-  onRebase,
-}: {
-  answerId: string;
-  base: AnswerDetail;
-  onRebase: () => Promise<RebaseResult>;
-}) {
-  const routerNavigate = useNavigate();
+function EditForm({ answer }: { answer: AnswerDetail }) {
+  const state = useRouteState();
+  const navigate = useArcaNavigate();
+  const command = useAnswerCommand(answer.answerId);
+  const pending = usePendingAnswer(answer.answerId);
+  const identity = useMemo<UpdateDraftIdentity>(
+    () => ({ kind: 'update', answerId: answer.answerId }),
+    [answer.answerId],
+  );
+  const draft = useDraftSession(identity, undefined, answer.content);
+  const input = useAnswerInput(draft);
   const copyText = useCopyText();
-  const identity = useRef<UpdateDraftIdentity>({ kind: 'update', answerId, baseRevision: base.revision }).current;
-  const draft = useDraftSession(identity, undefined, base.content);
-  const stale = useStaleEditDraft(answerId, base.revision);
-  const { markStale } = useArchive();
-  const command = useAnswerCommand(answerId);
-  const pendingOnEntry = usePendingAnswer(answerId);
-  const { view } = command;
-  const [edited, setEdited] = useState(false);
-  const input = useAnswerInput(draft, () => setEdited(true));
-  useAnswerStartedEvent('UPDATE', {
-    ready: draft.load.kind !== 'loading',
-    text: draft.text,
-    composing: input.composing,
-  });
-  useAnswerSaveFailedEvent('UPDATE', view);
-  const [rebaseState, setRebaseState] = useState<RebaseState>('idle');
-  const [copyResult, setCopyResult] = useState<CopyResult>(null);
-  const [staleCopy, setStaleCopy] = useState<CopyResult>(null);
-  const [discardDialog, setDiscardDialog] = useState(false);
-  const [staleDialog, setStaleDialog] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const backButtonRef = useRef<HTMLButtonElement | null>(null);
-  const discardButtonRef = useRef<HTMLButtonElement | null>(null);
-  const staleDiscardRef = useRef<HTMLButtonElement | null>(null);
-
-  const unchanged = draft.text === base.content;
-  const busy = view.kind === 'working';
-  const inFlight = busy || view.kind === 'unconfirmed';
-  const pending = inFlight || pendingOnEntry === 'checking';
-  const draftKept = draft.status.kind === 'persisted' || draft.status.kind === 'clean';
-  const trackerKept = (view.kind === 'working' || view.kind === 'unconfirmed') && view.trackerKept;
-  const canLeaveWhilePending = inFlight && draftKept && trackerKept;
+  const [copied, setCopied] = useState<string | null>(null);
+  const backRef = useRef<HTMLButtonElement | null>(null);
+  const busy = command.view.kind === 'working';
+  const unknown = command.view.kind === 'unconfirmed' && command.view.mode === 'UPDATE';
+  const deleting =
+    (command.view.kind === 'working' || command.view.kind === 'unconfirmed') && command.view.mode === 'DELETE';
+  const unchanged = draft.text === answer.content;
   const guard = useLeaveGuard({
-    shouldBlock: () => (inFlight ? !canLeaveWhilePending : !draftKept && !unchanged),
-    pending: inFlight,
+    shouldBlock: () => busy || (!unchanged && draft.status.kind !== 'clean' && draft.status.kind !== 'persisted'),
+    pending: busy,
     flush: draft.flush,
   });
-
-  const viewKind = view.kind;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 저장 상태가 바뀔 때마다 초기화한다.
   useEffect(() => {
-    setCopyResult(null);
-  }, [viewKind]);
-
-  useEffect(() => {
-    if (view.kind !== 'succeeded') return;
-    guard.allowLeave();
-    routerNavigate(-1);
-  }, [view.kind, routerNavigate, guard.allowLeave]);
-
-  const latestDraft = useRef(draft);
-  latestDraft.current = draft;
-  useEffect(() => {
-    if (unchanged && draft.status.kind === 'persisted') void latestDraft.current.discard(base.content);
-  }, [unchanged, draft.status.kind, base.content]);
-
-  const conflict = (view.kind === 'notApplied' || view.kind === 'rejected') && view.code === 'REVISION_CONFLICT';
-  useEffect(() => {
-    if (conflict) markStale();
-  }, [conflict, markStale]);
-
-  const { measured, currentCount } = input;
-  const overflow = measured.overCount > 0;
-  const loading = draft.load.kind === 'loading';
-
-  const leaveTo = () => {
-    guard.allowLeave();
-    command.consume();
-    routerNavigate(-1);
-  };
-
-  const onSave = () => {
-    if (!measured.savable || unchanged || input.composingRef.current || busy) return;
-    setCopyResult(null);
-    command.saveEdit({ mode: 'UPDATE', answerId, expectedRevision: base.revision }, draft.flushKept);
-  };
-
-  const onLeave = () => {
-    if (unchanged && !pending) void draft.discard(base.content);
-    routerNavigate(-1);
-  };
-
-  const onCopy = async () => {
-    const result = await copyText(draft.text);
-    setCopyResult(result.kind);
-    if (result.kind === 'failed') textareaRef.current?.focus();
-  };
-
-  const onReEdit = async () => {
-    if (rebaseState !== 'unkept' && !(await draft.flush())) {
-      setRebaseState('unkept');
-      return;
-    }
-    setRebaseState('running');
-    const result = await onRebase();
-    if (result === 'rebased') {
+    if (command.view.kind === 'succeeded') {
       guard.allowLeave();
       command.consume();
-      return;
+      navigate(paths.detail, { answerRef: state?.answerRef ?? '' }, { replace: true });
     }
-    if (result === 'gone') {
-      leaveTo();
-      return;
-    }
-    setRebaseState('failed');
-  };
-
-  const keep = keepStateOf(draft);
-  const closedByUser = view.kind === 'notApplied' && view.code === 'COMMAND_CLOSED';
-  const saveProblem = (view.kind === 'notApplied' && !closedByUser) || view.kind === 'rejected';
-  const baseGone =
-    (view.kind === 'notApplied' || view.kind === 'rejected') &&
-    (view.code === 'REVISION_CONFLICT' || view.code === 'ANSWER_NOT_FOUND');
-  const restoredClean =
-    draft.load.kind === 'ready' && draft.load.restored && !unchanged && draft.status.kind === 'clean';
-  const status = editStatus({
-    view,
-    loading,
-    keep,
-    conflict,
-    rebaseState,
-    unchanged,
-    edited,
-    restoredClean,
-    copyResult,
-    saveProblem,
-  });
-  const showCopy = pending || keep.failed || saveProblem;
-  const textLocked = pending || view.kind === 'reconciled';
-  const helpId = 'f22-help';
-
+  }, [command, guard.allowLeave, navigate, state?.answerRef]);
   return (
     <PixelAppShell className="arca-page--compose">
       <div className="arca-screen-header">
-        <PixelIconButton label={copy['CPY-COM-005']} icon="back" buttonRef={backButtonRef} onClick={onLeave} />
+        <PixelIconButton
+          label={copy['CPY-COM-005']}
+          icon="back"
+          buttonRef={backRef}
+          onClick={() => navigate(paths.detail, { answerRef: state?.answerRef ?? '' })}
+        />
         <ScreenTitle>{copy['CPY-F22-001']}</ScreenTitle>
       </div>
-      <section className="arca-preface" aria-labelledby="f22-question-label">
-        <p className="arca-visually-hidden" id="f22-question-label">
-          {copy['CPY-F22-002']}
-        </p>
-        <time className="arca-question-date" dateTime={base.createdDateKst}>
-          {formatDateKst(base.createdDateKst)}
-        </time>
-        <p className="arca-question arca-question--quiet">{base.question.text}</p>
+      <section className="arca-preface">
+        <time className="arca-question-date">{formatDateKst(answer.createdDateKst)}</time>
+        <p className="arca-question arca-question--quiet">{answer.question.text}</p>
       </section>
       <RecordPanel>
-        {loading ? (
+        {draft.load.kind === 'loading' ? (
           <PixelPlaceholder />
         ) : (
           <>
             <PixelTextareaField
-              textareaRef={textareaRef}
               id="f22-answer"
+              describedBy="f22-count"
               label={copy['CPY-F22-003']}
-              describedBy={`f22-privacy ${helpId}${overflow ? ' f22-error' : ''}`}
-              invalid={overflow}
-              placeholder={copy['CPY-F22-004']}
               value={draft.text}
-              readOnly={textLocked}
+              readOnly={busy || unknown || deleting || pending === 'checking'}
+              invalid={input.measured.overCount > 0 || input.measured.overCodePoints}
               {...input.fieldHandlers}
             />
-            <div className="arca-field-help" id={helpId}>
-              <span>{keepLabel(draft.status, KEEP_LABELS) ?? (restoredClean ? copy['CPY-F22-011'] : '')}</span>
-              <span>{fill(copy['CPY-F22-007'], { currentCount: formatCount(currentCount) })}</span>
+            <div className="arca-field-help">
+              <span>{draft.status.kind === 'persisted' ? copy['CPY-F22-010'] : ''}</span>
+              <span id="f22-count">{fill(copy['CPY-F22-007'], { currentCount: formatCount(input.currentCount) })}</span>
             </div>
-            {overflow && (
-              <p className="arca-field-error" id="f22-error">
-                {fill(copy['CPY-F22-008'], { overCount: formatCount(measured.overCount) })}
-              </p>
-            )}
           </>
         )}
       </RecordPanel>
-      <InlineStatus
-        message={status.message ?? status.announcement}
-        tone={status.danger ? 'danger' : 'neutral'}
-        quiet={status.message === null}
-      />
-      {stale && !pending && (
-        <RecordPanel labelledBy="f22-stale-label">
-          <p className="arca-text-secondary" id="f22-stale-label">
-            {copy['CPY-F22-036']}
-          </p>
-          <p className="arca-user-text">{stale.text}</p>
-          <InlineStatus message={copyResultMessage(staleCopy)} tone={staleCopy === 'failed' ? 'danger' : 'neutral'} />
-          <div className="arca-actions">
-            <PixelButton
-              variant="ghost"
-              onClick={() => void copyText(stale.text).then((result) => setStaleCopy(result.kind))}
-            >
-              {copy['CPY-F22-037']}
-            </PixelButton>
-            <PixelButton ref={staleDiscardRef} variant="ghost" onClick={() => setStaleDialog(true)}>
-              {copy['CPY-F22-038']}
-            </PixelButton>
-          </div>
-        </RecordPanel>
+      {input.measured.overCodePoints && (
+        <InlineStatus message="문자 조합이 너무 길어요. 일부 문자를 줄여 주세요." tone="danger" />
       )}
+      <InlineStatus
+        message={
+          unknown
+            ? '수정 결과를 확인하지 못했어요. 글을 유지한 채 다시 저장할 수 있어요.'
+            : command.view.kind === 'rejected'
+              ? '수정하지 못했어요. 입력과 기록을 확인해 주세요.'
+              : command.view.kind === 'localFailure'
+                ? '임시글을 보관하지 못했어요. 글을 복사해 주세요.'
+                : copied
+        }
+      />
       <div className="arca-actions">
-        {view.kind === 'unconfirmed' && view.recovery ? (
-          <PixelButton variant="primary" onClick={() => command.close()}>
-            {view.recovery === 'closePrepared' ? copy['CPY-COM-020'] : copy['CPY-COM-023']}
-          </PixelButton>
-        ) : view.kind === 'unconfirmed' ? (
-          <PixelButton variant="primary" onClick={() => command.recheck()}>
-            {copy['CPY-F22-021']}
-          </PixelButton>
-        ) : conflict ? (
-          <PixelButton variant="primary" loading={rebaseState === 'running'} onClick={() => void onReEdit()}>
-            {copy['CPY-F22-035']}
-          </PixelButton>
-        ) : view.kind === 'reconciled' ? (
-          <PixelButton variant="primary" onClick={leaveTo}>
-            {copy['CPY-COM-024']}
-          </PixelButton>
-        ) : (
-          <PixelButton
-            variant="primary"
-            loading={busy}
-            disabled={
-              loading || pendingOnEntry === 'checking' || baseGone || (!busy && (!measured.savable || unchanged))
-            }
-            onClick={
-              view.kind === 'notApplied' || view.kind === 'rejected' || view.kind === 'localFailure'
-                ? () => {
-                    command.consume();
-                    onSave();
-                  }
-                : onSave
-            }
-          >
-            {saveProblem ? copy['CPY-F22-017'] : copy['CPY-F22-014']}
-          </PixelButton>
-        )}
-        {showCopy && (
-          <PixelButton variant="ghost" onClick={() => void onCopy()}>
-            {copy['CPY-F11-029']}
-          </PixelButton>
-        )}
-        {canLeaveWhilePending && <PixelButton onClick={() => routerNavigate(-1)}>{copy['CPY-F11-040']}</PixelButton>}
-        {!pending && !unchanged && (
-          <PixelButton ref={discardButtonRef} variant="ghost" onClick={() => setDiscardDialog(true)}>
-            {copy['CPY-F22-024']}
-          </PixelButton>
-        )}
+        <PixelButton
+          variant="primary"
+          loading={busy}
+          disabled={
+            deleting || pending === 'checking' || (!busy && (!input.measured.savable || (!unknown && unchanged)))
+          }
+          onClick={() => {
+            if (input.composingRef.current) return;
+            if (unknown) command.retry();
+            else command.saveEdit({ mode: 'UPDATE', answerId: answer.answerId }, draft.flushKept);
+          }}
+        >
+          {unknown ? '다시 저장하기' : copy['CPY-F22-014']}
+        </PixelButton>
+        <PixelButton
+          variant="ghost"
+          onClick={() =>
+            void copyText(draft.text).then((r) =>
+              setCopied(r.kind === 'copied' ? '글을 복사했어요.' : '글을 복사하지 못했어요.'),
+            )
+          }
+        >
+          {copy['CPY-F11-029']}
+        </PixelButton>
       </div>
-      <p className="arca-privacy arca-privacy--centered" id="f22-privacy">
-        {copy['CPY-F22-006']}
-      </p>
-      <PixelAlertDialog
-        open={discardDialog}
-        title={copy['CPY-F22-025']}
-        description={copy['CPY-F22-026']}
-        cancelLabel={copy['CPY-F22-027']}
-        actionLabel={copy['CPY-F22-028']}
-        danger
-        returnFocusRef={discardButtonRef}
-        onCancel={() => setDiscardDialog(false)}
-        onAction={() => {
-          setDiscardDialog(false);
-          void draft.discard(base.content).then(() => {
-            guard.allowLeave();
-            routerNavigate(-1);
-          });
-        }}
-      />
-      <PixelAlertDialog
-        open={staleDialog}
-        title={copy['CPY-F22-025']}
-        description={copy['CPY-F22-026']}
-        cancelLabel={copy['CPY-F22-027']}
-        actionLabel={copy['CPY-F22-038']}
-        danger
-        returnFocusRef={staleDiscardRef}
-        onCancel={() => setStaleDialog(false)}
-        onAction={() => {
-          setStaleDialog(false);
-          setStaleCopy(null);
-          void stale?.remove().then((removed) => (removed ? textareaRef : staleDiscardRef).current?.focus());
-        }}
-      />
-      <LeaveConfirmDialog guard={guard} returnFocusRef={backButtonRef} />
+      <LeaveConfirmDialog guard={guard} returnFocusRef={backRef} />
     </PixelAppShell>
   );
 }

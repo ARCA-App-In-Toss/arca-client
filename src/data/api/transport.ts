@@ -1,13 +1,12 @@
 import { ProtocolFailure, TransportFailure } from '../../domain/failures.ts';
 
-export type HttpMethod = 'GET' | 'POST' | 'PUT';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
 export interface HttpRequest {
   method: HttpMethod;
   path: string;
   query?: Record<string, string>;
   bearer?: string;
-  idempotencyKey?: string;
   body?: unknown;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -35,7 +34,6 @@ export function createHttpTransport({ baseUrl, fetch: fetchImpl = fetch }: HttpT
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (request.body !== undefined) headers['Content-Type'] = 'application/json; charset=utf-8';
     if (request.bearer) headers.Authorization = `Bearer ${request.bearer}`;
-    if (request.idempotencyKey) headers['Idempotency-Key'] = request.idempotencyKey;
 
     if (request.signal?.aborted) throw new TransportFailure('aborted');
 

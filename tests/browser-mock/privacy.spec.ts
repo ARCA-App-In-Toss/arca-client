@@ -13,11 +13,11 @@ test('MS-PRIVACY-001 question → write → save → read again keeps canaries o
   await expect(page.getByRole('heading', { level: 2, name: '기억 조각으로 저장됐어요.' })).toBeFocused();
   await sinks.checkpoint();
 
-  await page.getByRole('button', { name: '항해 기록 보기' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '항해 기록' })).toBeVisible();
-  await page.locator('.arca-memory-row').first().click();
+  await page.getByRole('button', { name: '오늘의 항해로' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '오늘의 항해' })).toBeVisible();
+  await page.getByRole('button', { name: '내 기억 조각 보기' }).click();
   await expect(page.getByRole('heading', { level: 1, name: '기억 조각' })).toBeFocused();
-  await expect(page.getByRole('region', { name: '내 답변' }).locator('.arca-user-text')).toHaveText(CANARY.answer);
+  await expect(page.locator('.arca-user-text--reading')).toHaveText(CANARY.answer);
   await sinks.flushAnalytics();
   await sinks.assertClean();
 });
@@ -44,8 +44,6 @@ test('MS-PRIVACY-001 nickname error → recovery → save, then delete-all keeps
 
   await page.getByRole('button', { name: '모든 데이터 삭제' }).click();
   await expect(page.getByRole('heading', { level: 1, name: '모든 데이터 삭제' })).toBeVisible();
-  await page.getByRole('button', { name: '삭제', exact: true }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'ARCA 이야기' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('전체 데이터 삭제 기능을 준비하고 있어요.')).toBeVisible();
   await sinks.assertClean();
 });

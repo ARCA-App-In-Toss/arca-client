@@ -24,7 +24,6 @@ const targetPath = {
   intro: paths.intro,
   today: paths.today,
   boarded: paths.joinComplete,
-  deletion: paths.deleteAll,
 } as const;
 
 function ScrollReset() {
@@ -48,9 +47,6 @@ function BootstrapBoundary() {
   if (pathname === paths.startError || pathname === paths.start) {
     return <Navigate to={targetPath[bootstrap.target]} replace />;
   }
-  if (bootstrap.target === 'deletion' && pathname !== paths.deleteAll) {
-    return <Navigate to={paths.deleteAll} replace />;
-  }
   return (
     <>
       <ScrollReset />
@@ -71,7 +67,7 @@ function RequireMode({ mode, children }: { mode: SessionMode; children: ReactNod
 function RequireDeletionAccess({ children }: { children: ReactNode }) {
   const { bootstrap, session } = useAppSnapshot();
   const { pathname } = useLocation();
-  if (session?.mode === 'ACTIVE' || session?.mode === 'DELETION_RECOVERY') return <>{children}</>;
+  if (session?.mode === 'ACTIVE') return <>{children}</>;
   const fallback = bootstrap.phase === 'ready' ? targetPath[bootstrap.target] : paths.start;
   if (fallback === pathname) return <StartScreen />;
   return <Navigate to={fallback} replace />;
@@ -93,7 +89,7 @@ export const routes: RouteObject[] = [
       {
         path: paths.intro,
         element: (
-          <RequireMode mode="PRE_PASSENGER">
+          <RequireMode mode="GUEST">
             <IntroScreen />
           </RequireMode>
         ),
@@ -101,7 +97,7 @@ export const routes: RouteObject[] = [
       {
         path: paths.join,
         element: (
-          <RequireMode mode="PRE_PASSENGER">
+          <RequireMode mode="GUEST">
             <BoardingScreen />
           </RequireMode>
         ),

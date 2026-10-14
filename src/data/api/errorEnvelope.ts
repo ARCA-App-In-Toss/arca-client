@@ -1,5 +1,6 @@
 import type { ZodObject } from 'zod';
 import { DomainFailure, ProtocolFailure } from '../../domain/failures.ts';
+import type { ConsentPolicy } from '../../domain/models.ts';
 import { zApiError } from './generated/zod.gen.ts';
 
 const optionsByCode = new Map<string, ZodObject>();
@@ -18,6 +19,7 @@ export function toDomainFailure(body: unknown): DomainFailure | ProtocolFailure 
   const option = typeof raw.code === 'string' ? optionsByCode.get(raw.code) : undefined;
   if (!option) return new ProtocolFailure('envelope');
   if ('recovery' in raw && !('recovery' in option.shape)) return new ProtocolFailure('envelope');
+  if ('retryAfterSeconds' in raw && !('retryAfterSeconds' in option.shape)) return new ProtocolFailure('envelope');
 
   const known = Object.fromEntries(Object.keys(option.shape).flatMap((key) => (key in raw ? [[key, raw[key]]] : [])));
   const parsed = option.safeParse(known);
@@ -25,5 +27,9 @@ export function toDomainFailure(body: unknown): DomainFailure | ProtocolFailure 
 
   const error = parsed.data as { code: string; category: DomainFailure['category']; requestId: string };
   const recovery = (parsed.data as { recovery?: { recoveryAllowed?: unknown } }).recovery;
-  return new DomainFailure(error.code, error.category, error.requestId, recovery?.recoveryAllowed === true);
+  const policies =
+    error.code === 'POLICY_VERSION_CHANGED'
+      ? (parsed.data as { recovery: { policies: ConsentPolicy[] } }).recovery.policies
+      : null;
+  return new DomainFailure(error.code, error.category, error.requestId, recovery?.recoveryAllowed === true, policies);
 }

@@ -1,5 +1,5 @@
 import { type ChangeEvent, type CompositionEvent, type KeyboardEvent, useRef, useState } from 'react';
-import type { NicknameSaveOutcome } from '../../app/hooks/passenger.ts';
+import type { NicknameSaveOutcome } from '../../app/hooks/member.ts';
 import { countGraphemes } from '../../domain/text/graphemes.ts';
 import { checkNickname } from '../../domain/text/nickname.ts';
 import type { CopyId } from '../../ui/copy.ts';

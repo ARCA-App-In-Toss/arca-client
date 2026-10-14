@@ -27,27 +27,13 @@ test('F30: nickname edit saves once, closes to its trigger; Back returns to F10'
   expect(errors).toEqual([]);
 });
 
-test('F31: two-step confirmation with safe initial focus; success lands on F01 and Back cannot reopen old screens', async ({
-  page,
-}) => {
+test('F31 remains unavailable without submitting a deletion', async ({ page }) => {
   await openSettings(page);
   await page.getByRole('button', { name: '모든 데이터 삭제' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: '모든 데이터 삭제' })).toBeVisible();
-  await expect(page.getByText('가명 처리된 동의 주체 식별값')).toBeVisible();
-  await page.getByRole('button', { name: '삭제', exact: true }).click();
-  const dialog = page.getByRole('alertdialog', { name: '정말 모든 데이터를 삭제할까요?' });
-  await expect(dialog.getByRole('button', { name: '취소' })).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '삭제', exact: true })).toBeFocused();
-
-  await page.getByRole('button', { name: '삭제', exact: true }).click();
-  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'ARCA 이야기' })).toBeVisible({ timeout: 15_000 });
-  await noSecretsInUrl(page);
-  await page.goBack();
-  await expect(page.getByRole('heading', { level: 1, name: 'ARCA 이야기' })).toBeVisible();
-  await expect(page.getByRole('heading', { level: 1, name: '설정' })).toHaveCount(0);
+  await expect(page.getByText('전체 데이터 삭제 기능을 준비하고 있어요.')).toBeVisible();
+  await expect(page.getByRole('alertdialog')).toHaveCount(0);
+  await page.getByRole('button', { name: '설정으로 돌아가기' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '설정' })).toBeVisible();
 });
 
 test('320px with 200% text: F30 and F31 controls stay reachable, no horizontal scroll', async ({ page }) => {
@@ -67,17 +53,8 @@ test('320px with 200% text: F30 and F31 controls stay reachable, no horizontal s
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.getByRole('button', { name: '모든 데이터 삭제', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: '모든 데이터 삭제' })).toBeVisible();
-  for (const name of ['취소', '삭제']) {
-    const button = page.getByRole('button', { name, exact: true });
-    await button.scrollIntoViewIfNeeded();
-    await expect(button).toBeInViewport();
-  }
+  const back = page.getByRole('button', { name: '설정으로 돌아가기' });
+  await back.scrollIntoViewIfNeeded();
+  await expect(back).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-  await page.getByRole('button', { name: '삭제', exact: true }).click();
-  const dialog = page.getByRole('alertdialog');
-  for (const name of ['취소', '삭제']) {
-    const button = dialog.getByRole('button', { name, exact: true });
-    await button.scrollIntoViewIfNeeded();
-    await expect(button).toBeInViewport();
-  }
 });

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePassengerProfile } from '../../app/hooks/passenger.ts';
+import { useMemberProfile } from '../../app/hooks/member.ts';
 import { appVersion, type SettingsLink, useSettingsLinks } from '../../app/hooks/settings.ts';
 import { paths, useArcaNavigate } from '../../app/navigation.ts';
 import {
@@ -12,10 +12,10 @@ import {
 } from '../../ui/components.tsx';
 import { copy, fill } from '../../ui/copy.ts';
 import { RootHeader, RootTabs } from '../RootTabs.tsx';
-import { PassengerGroup } from './PassengerGroup.tsx';
+import { MemberGroup } from './MemberGroup.tsx';
 
 export function SettingsScreen() {
-  const profile = usePassengerProfile();
+  const profile = useMemberProfile();
   const navigate = useArcaNavigate();
   const openLink = useSettingsLinks();
   const [linkFailed, setLinkFailed] = useState(false);
@@ -30,13 +30,13 @@ export function SettingsScreen() {
   return (
     <PixelAppShell tabs={editingNickname ? undefined : <RootTabs current="settings" />}>
       <RootHeader title={copy['CPY-F30-001']} />
-      <section className="arca-settings-group" aria-labelledby="f30-passenger">
-        <h2 className="arca-label" id="f30-passenger">
+      <section className="arca-settings-group" aria-labelledby="f30-member">
+        <h2 className="arca-label" id="f30-member">
           {copy['CPY-F30-002']}
         </h2>
         {profile.data ? (
-          <PassengerGroup
-            passengerCode={profile.data.passengerCode}
+          <MemberGroup
+            memberCode={profile.data.memberCode}
             nickname={profile.data.nickname}
             onEditingChange={setEditingNickname}
           />

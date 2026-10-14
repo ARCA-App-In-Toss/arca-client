@@ -9,15 +9,12 @@ export interface CreateDraftIdentity {
   kind: 'create';
   dailySemaId: string;
   semaId: string;
-  semaVersion: string;
   questionId: string;
-  questionVersion: string;
 }
 
 export interface UpdateDraftIdentity {
   kind: 'update';
   answerId: string;
-  baseRevision: string;
 }
 
 export type DraftIdentity = CreateDraftIdentity | UpdateDraftIdentity;
@@ -39,15 +36,12 @@ const zCreateIdentity = z.object({
   kind: z.literal('create'),
   dailySemaId: z.string().min(1),
   semaId: z.string().min(1),
-  semaVersion: z.string().min(1),
   questionId: z.string().min(1),
-  questionVersion: z.string().min(1),
 });
 
 const zUpdateIdentity = z.object({
   kind: z.literal('update'),
   answerId: z.string().min(1),
-  baseRevision: z.string().min(1),
 });
 
 const zDraftRecord = z.object({
@@ -69,8 +63,9 @@ const DRAFT_PREFIX = 'draft:create:';
 const UPDATE_PREFIX = 'draft:update:';
 
 export function draftName(identity: DraftIdentity): string {
-  if (identity.kind === 'update') return `${UPDATE_PREFIX}${identity.answerId}@${identity.baseRevision}`;
-  return `${DRAFT_PREFIX}${identity.dailySemaId}:${identity.semaId}@${identity.semaVersion}:${identity.questionId}@${identity.questionVersion}`;
+  return identity.kind === 'update'
+    ? `${UPDATE_PREFIX}${identity.answerId}`
+    : `${DRAFT_PREFIX}${identity.dailySemaId}:${identity.semaId}:${identity.questionId}`;
 }
 
 function sameIdentity(a: DraftIdentity, b: DraftIdentity): boolean {
@@ -147,10 +142,10 @@ export class DraftRepository {
   async listUpdateDrafts(answerId: string | null): Promise<Draft[]> {
     const area = this.requireArea();
     const manifest = await this.journal.readManifest(area);
-    const prefix = answerId === null ? UPDATE_PREFIX : `${UPDATE_PREFIX}${answerId}@`;
+    const prefix = answerId === null ? UPDATE_PREFIX : `${UPDATE_PREFIX}${answerId}`;
     const found: Draft[] = [];
     for (const name of Object.keys(manifest?.entries ?? {})) {
-      if (!name.startsWith(prefix)) continue;
+      if (answerId === null ? !name.startsWith(prefix) : name !== prefix) continue;
       const parsed = zDraftRecord.safeParse(await this.journal.getRecord(area, name).catch(() => null));
       if (!parsed.success || draftName(parsed.data.identity) !== name) continue;
       const draft = await this.load(parsed.data.identity).catch(() => null);
@@ -162,9 +157,9 @@ export class DraftRepository {
   async removeAllForAnswer(answerId: string): Promise<void> {
     const area = this.requireArea();
     const manifest = await this.journal.readManifest(area);
-    const prefix = `${UPDATE_PREFIX}${answerId}@`;
+    const prefix = `${UPDATE_PREFIX}${answerId}`;
     for (const name of Object.keys(manifest?.entries ?? {})) {
-      if (name.startsWith(prefix)) await this.journal.removeRecord(area, name);
+      if (name === prefix) await this.journal.removeRecord(area, name);
     }
   }
 
@@ -174,14 +169,12 @@ export class DraftRepository {
       recordType: 'draft',
       identity:
         identity.kind === 'update'
-          ? { kind: 'update', answerId: identity.answerId, baseRevision: identity.baseRevision }
+          ? { kind: 'update', answerId: identity.answerId }
           : {
               kind: 'create',
               dailySemaId: identity.dailySemaId,
               semaId: identity.semaId,
-              semaVersion: identity.semaVersion,
               questionId: identity.questionId,
-              questionVersion: identity.questionVersion,
             },
       text,
       lastModifiedAt,

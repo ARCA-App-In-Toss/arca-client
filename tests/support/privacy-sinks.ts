@@ -183,15 +183,10 @@ export async function watchSinks(page: Page) {
   };
 
   const flushAnalytics = async () => {
-    const sent = page.waitForRequest((request) => isAnalyticsBatch(request.url()));
     await page.evaluate(() => {
-      for (const state of ['hidden', 'visible'] as const) {
-        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
-        document.dispatchEvent(new Event('visibilitychange'));
-      }
+      document.dispatchEvent(new Event('visibilitychange'));
     });
-    await sent;
-    expect(entries.some(({ sink, value }) => sink === ANALYTICS_SINK && value.includes('"events"'))).toBe(true);
+    expect(entries.some(({ sink }) => sink === ANALYTICS_SINK)).toBe(false);
   };
 
   return { checkpoint, assertClean, flushAnalytics };

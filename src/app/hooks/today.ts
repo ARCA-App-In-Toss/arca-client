@@ -3,19 +3,21 @@ import { useCallback, useEffect } from 'react';
 import { queryKeys } from '../../data/query/keys.ts';
 import type { Today } from '../../domain/models.ts';
 import { msUntilKstBoundary } from '../../domain/time/kst.ts';
-import { START_EXCERPT_PROFILE } from '../bootstrap/bootstrap.ts';
 import { useAppServices, useAppSnapshot } from '../services.tsx';
 
 export function useToday() {
   const services = useAppServices();
   const { session } = useAppSnapshot();
-  const active = session?.mode === 'ACTIVE' && session.generation !== null;
+  const active = session?.mode === 'ACTIVE' && session.accountScope !== null;
   return useQuery<Today>({
-    queryKey: queryKeys.today(session?.ownerScope ?? '', session?.generation ?? '', START_EXCERPT_PROFILE),
+    queryKey: queryKeys.today(session?.ownerScope ?? '', session?.accountScope ?? ''),
     enabled: active,
     staleTime: Number.POSITIVE_INFINITY,
     queryFn: ({ signal }) =>
-      services.session.run('ACTIVE', (auth) => services.api.getToday(auth, START_EXCERPT_PROFILE, signal)),
+      services.session.run('ACTIVE', async (auth) => {
+        const today = await services.api.getToday(auth, signal);
+        return today;
+      }),
   });
 }
 
@@ -23,11 +25,11 @@ export function useRefreshToday() {
   const services = useAppServices();
   const { session } = useAppSnapshot();
   return useCallback(() => {
-    if (!session?.generation) return;
+    if (!session?.accountScope) return;
     void services.queryClient.invalidateQueries({
-      queryKey: queryKeys.today(session.ownerScope, session.generation, START_EXCERPT_PROFILE),
+      queryKey: queryKeys.today(session.ownerScope, session.accountScope),
     });
-  }, [services, session?.ownerScope, session?.generation]);
+  }, [services, session?.ownerScope, session?.accountScope]);
 }
 
 export function useTodayRefreshEvents(options: { onEntry: boolean }) {

@@ -1,17 +1,14 @@
 import type { MockQuestion, MockSema, MockWorld } from './world.ts';
 import { SYNTHETIC_KEYS } from './world.ts';
 
-const q = (id: string, role: MockQuestion['role'], text: string): MockQuestion => ({
+const q = (id: string, _role: 'PRIMARY' | 'ALTERNATE', text: string): MockQuestion => ({
   questionId: id,
-  version: '1',
-  role,
   text,
 });
 
 export const DEMO_SEMA: MockSema = {
   dailySemaId: 'demo-day-0928',
   semaId: 'demo-sema-0928',
-  version: '1',
   semaCode: 'SEMA-0271',
   dateKst: '2026-09-28',
   primaryQuestion: q('demo-q-0928-p', 'PRIMARY', '요즘 자꾸 미루게 되는 일이 있다면, 그 일의 어떤 부분이 무거운가요?'),
@@ -389,10 +386,10 @@ function archiveRecords(): DemoRecord[] {
 }
 
 export function seedDemo(world: MockWorld): void {
-  const passenger = world.passengers.get(SYNTHETIC_KEYS.registered);
-  if (passenger) {
-    passenger.passengerCode = 'ARC-2417';
-    passenger.nickname = '하루';
+  const member = world.members.get(SYNTHETIC_KEYS.registered);
+  if (member) {
+    member.memberCode = 'ARCA-7K2QX';
+    member.nickname = '하루';
   }
   world.sema = DEMO_SEMA;
   [...archiveRecords(), ...featuredRecords].forEach((record, index) => {

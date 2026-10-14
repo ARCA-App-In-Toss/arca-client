@@ -6,22 +6,40 @@ export type ClientOptions = {
 
 export type EntityId = string;
 
-export type Revision = string;
-
-export type OperationId = string;
-
 export type Instant = string;
 
 export type KstDate = string;
 
-export type EmptyInput = {
-    [key: string]: never;
+export type MemberProfile = {
+    memberCode: string;
+    nickname: string | null;
 };
 
-export type PassengerProfile = {
-    passengerCode: string;
-    nickname: string | null;
-    revision: Revision;
+export type SessionContext = {
+    mode: 'GUEST';
+    member: null;
+} | {
+    mode: 'ACTIVE';
+    member: MemberProfile;
+};
+
+export type SessionResponse = {
+    accessToken: string;
+    expiresAt: Instant;
+    context: SessionContext;
+};
+
+export type ActiveSessionResponse = {
+    accessToken: string;
+    expiresAt: Instant;
+    context: {
+        mode: 'ACTIVE';
+        member: MemberProfile;
+    };
+};
+
+export type EstablishSessionInput = {
+    anonymousKey: string;
 };
 
 export type ConsentPolicy = {
@@ -32,235 +50,85 @@ export type ConsentPolicy = {
     required: boolean;
 };
 
+export type ConsentPoliciesResponse = {
+    consentPolicies: Array<ConsentPolicy>;
+};
+
 export type ConsentReceiptInput = {
     policyId: string;
     version: string;
     agreed: true;
 };
 
-export type AllDataDeleteReceipt = {
-    effect: 'DELETED';
-    deletedAt: Instant;
-    consentEvidenceRetainedUntil: Instant;
-    backupsExpireBy: Instant;
-};
-
-export type RecentDeletion = {
-    ticketId: EntityId;
-    deletedGeneration: EntityId;
-    resultExpiresAt: Instant;
-    proof: AllDataDeleteReceipt;
-};
-
-export type ActiveSessionContext = {
-    mode: 'ACTIVE';
-    passenger: PassengerProfile;
-    dataGeneration: EntityId;
-};
-
-export type SessionContext = {
-    mode: 'PRE_PASSENGER';
-    passenger: null;
-} | ActiveSessionContext | {
-    mode: 'DELETION_RECOVERY';
-    passenger: null;
-    deletionTicketId: EntityId;
-    dataGeneration: EntityId;
-};
-
-export type EstablishSessionResponse = {
-    accessToken: string;
-    expiresAt: Instant;
-    context: SessionContext;
-    consentPolicies: Array<ConsentPolicy>;
-    recentDeletion?: RecentDeletion;
-};
-
-export type EstablishSessionInput = {
-    anonymousKey: string;
-};
-
-export type CreatePassengerInput = {
+export type CreateMemberInput = {
     consents: Array<ConsentReceiptInput>;
 };
 
-export type CreatePassengerResponse = {
-    accessToken: string;
-    expiresAt: Instant;
-    context: ActiveSessionContext;
-    consentPolicies: Array<ConsentPolicy>;
-    recentDeletion?: RecentDeletion;
-};
-
-export type SetNicknameInput = {
+export type UpdateNicknameInput = {
     nickname: string | null;
-    expectedRevision: Revision;
 };
 
-export type NicknameReceipt = {
-    operationId: OperationId;
-    profile: PassengerProfile;
-    resultExpiresAt: Instant;
-};
-
-export type QuestionSnapshot = {
+export type Question = {
     questionId: EntityId;
-    version: string;
-    role: 'PRIMARY' | 'ALTERNATE';
     text: string;
 };
 
 export type Sema = {
     dailySemaId: EntityId;
     semaId: EntityId;
-    version: string;
     semaCode: string;
     dateKst: KstDate;
-    primaryQuestion: QuestionSnapshot;
-    alternateQuestion: QuestionSnapshot;
+    primaryQuestion: Question;
+    alternateQuestion: Question;
 };
 
-export type ExcerptProfile = 'COMPACT' | 'STANDARD' | 'EXPANDED';
-
-export type Excerpt = {
-    profile: ExcerptProfile;
-    limits: {
-        maxGraphemes: number;
-        maxLogicalLines: number;
-    };
-    sourceRevision: Revision;
-    text: string;
-    isTruncated: boolean;
-};
-
-export type ExcerptAvailability = {
-    state: 'AVAILABLE';
-    value: Excerpt;
-} | {
-    state: 'UNAVAILABLE';
-    retryable: boolean;
-};
-
-export type CountSnapshot = {
+export type AnswerCount = {
     count: number;
-    observedAt: Instant;
-};
-
-export type CountAvailability = {
-    state: 'AVAILABLE';
-    value: CountSnapshot;
-} | {
-    state: 'UNAVAILABLE';
-    retryable: boolean;
-};
-
-export type AnswerCore = {
-    answerId: EntityId;
-    revision: Revision;
-    dailySemaId: EntityId;
-    semaId: EntityId;
-    semaVersion: string;
-    semaCode: string;
-    createdAt: Instant;
-    updatedAt: Instant;
-    createdDateKst: KstDate;
-    isEdited: boolean;
-    question: QuestionSnapshot;
 };
 
 export type AnswerDetail = {
     answerId: EntityId;
-    revision: Revision;
     dailySemaId: EntityId;
     semaId: EntityId;
-    semaVersion: string;
     semaCode: string;
     createdAt: Instant;
     updatedAt: Instant;
     createdDateKst: KstDate;
     isEdited: boolean;
-    question: QuestionSnapshot;
+    question: Question;
     content: string;
 };
 
-export type ExcerptAnswer = {
-    answerId: EntityId;
-    revision: Revision;
-    dailySemaId: EntityId;
-    semaId: EntityId;
-    semaVersion: string;
-    semaCode: string;
-    createdAt: Instant;
-    updatedAt: Instant;
-    createdDateKst: KstDate;
-    isEdited: boolean;
-    question: QuestionSnapshot;
-    excerpt: ExcerptAvailability;
-};
-
-export type TodayReadModel = {
+export type TodaySemaResponse = {
     dateKst: KstDate;
     sema: Sema;
     answer: {
         state: 'UNANSWERED';
     } | {
         state: 'ANSWERED';
-        value: ExcerptAnswer;
+        value: AnswerDetail;
     };
-    activeAnswerCount: CountAvailability;
+    activeAnswerCount: AnswerCount;
 };
 
-export type AnswerPage = {
-    items: Array<ExcerptAnswer>;
-    nextCursor: string | null;
-    pageSnapshotAt: Instant;
-};
-
-export type PrepareAnswerWriteInput = {
-    mode: 'CREATE';
+export type CreateAnswerInput = {
     dailySemaId: EntityId;
     semaId: EntityId;
-    semaVersion: string;
     questionId: EntityId;
-    questionVersion: string;
-} | {
-    mode: 'UPDATE';
-    answerId: EntityId;
-    expectedRevision: Revision;
-};
-
-export type PrepareAnswerDeleteInput = {
-    answerId: EntityId;
-    expectedRevision: Revision;
-};
-
-export type ExecuteCommandInput = {
-    kind: 'ANSWER_WRITE';
     content: string;
-} | {
-    kind: 'ANSWER_DELETE';
-} | {
-    kind: 'ALL_DATA_DELETE';
 };
 
-export type DomainError = {
-    code: 'ANSWER_CONTENT_INVALID';
-    category: 'VALIDATION';
-} | {
-    code: 'ANSWER_NOT_FOUND';
-    category: 'VALIDATION';
-} | {
-    code: 'REVISION_CONFLICT';
-    category: 'CONFLICT';
-} | {
-    code: 'COMMAND_CLOSED';
-    category: 'CONFLICT';
-} | {
-    code: 'COMMAND_EXPIRED';
-    category: 'CONFLICT';
-} | {
-    code: 'ALL_DATA_DELETE_FAILED';
-    category: 'MAINTENANCE';
+export type UpdateAnswerInput = {
+    content: string;
+};
+
+export type SaveAnswerResult = {
+    answer: AnswerDetail;
+    activeAnswerCount: AnswerCount;
+};
+
+export type DeleteAnswerResult = {
+    activeAnswerCount: AnswerCount;
 };
 
 export type ApiError = {
@@ -268,32 +136,28 @@ export type ApiError = {
     category: 'VALIDATION';
     requestId: string;
 } | {
-    code: 'ANONYMOUS_KEY_INVALID';
-    category: 'AUTH';
-    requestId: string;
-} | {
-    code: 'SESSION_RECOVERY_REQUIRED';
-    category: 'AUTH';
-    requestId: string;
-    recovery: {
-        kind: 'REESTABLISH_SESSION';
-        recoveryAllowed: true;
-    };
-} | {
-    code: 'SESSION_INVALID';
-    category: 'AUTH';
-    requestId: string;
-} | {
-    code: 'SESSION_SCOPE_INSUFFICIENT';
-    category: 'AUTH';
-    requestId: string;
-} | {
-    code: 'PASSENGER_NOT_FOUND';
+    code: 'ENDPOINT_NOT_FOUND';
     category: 'VALIDATION';
     requestId: string;
 } | {
-    code: 'PASSENGER_ALREADY_EXISTS';
-    category: 'CONFLICT';
+    code: 'METHOD_NOT_SUPPORTED';
+    category: 'VALIDATION';
+    requestId: string;
+} | {
+    code: 'MEDIA_TYPE_NOT_ACCEPTABLE';
+    category: 'VALIDATION';
+    requestId: string;
+} | {
+    code: 'MEDIA_TYPE_NOT_SUPPORTED';
+    category: 'VALIDATION';
+    requestId: string;
+} | {
+    code: 'MEMBER_NOT_FOUND';
+    category: 'VALIDATION';
+    requestId: string;
+} | {
+    code: 'ANSWER_NOT_FOUND';
+    category: 'VALIDATION';
     requestId: string;
 } | {
     code: 'CONSENT_REQUIRED';
@@ -326,547 +190,67 @@ export type ApiError = {
         kind: 'REFRESH_TODAY';
     };
 } | {
-    code: 'ANSWER_ALREADY_EXISTS';
-    category: 'CONFLICT';
+    code: 'ANSWER_CONTENT_INVALID';
+    category: 'VALIDATION';
     requestId: string;
 } | {
     code: 'CURSOR_INVALID';
     category: 'VALIDATION';
     requestId: string;
 } | {
-    code: 'COMMAND_ALREADY_PENDING';
-    category: 'CONFLICT';
+    code: 'ANONYMOUS_KEY_INVALID';
+    category: 'AUTH';
+    requestId: string;
+} | {
+    code: 'SESSION_INVALID';
+    category: 'AUTH';
+    requestId: string;
+} | {
+    code: 'SESSION_RECOVERY_REQUIRED';
+    category: 'AUTH';
     requestId: string;
     recovery: {
-        kind: 'QUERY_COMMAND';
-        ticketId: EntityId;
+        kind: 'REESTABLISH_SESSION';
+        recoveryAllowed: true;
     };
 } | {
-    code: 'COMMAND_NOT_FOUND';
-    category: 'VALIDATION';
+    code: 'SESSION_SCOPE_INSUFFICIENT';
+    category: 'AUTH';
     requestId: string;
 } | {
-    code: 'COMMAND_PAYLOAD_MISMATCH';
-    category: 'VALIDATION';
-    requestId: string;
-} | {
-    code: 'IDEMPOTENCY_KEY_REUSED';
+    code: 'MEMBER_ALREADY_EXISTS';
     category: 'CONFLICT';
     requestId: string;
 } | {
-    code: 'COMMAND_NOT_TERMINAL';
+    code: 'ANSWER_ALREADY_EXISTS';
     category: 'CONFLICT';
     requestId: string;
 } | {
-    code: 'OPERATION_RESULT_EXPIRED';
-    category: 'CONFLICT';
+    code: 'INTERNAL_ERROR';
+    category: 'MAINTENANCE';
     requestId: string;
 } | {
-    code: 'RATE_LIMITED';
-    category: 'RATE_LIMIT';
+    code: 'DATABASE_ERROR';
+    category: 'MAINTENANCE';
     requestId: string;
-    retryAfterSeconds?: number;
 } | {
     code: 'MAINTENANCE';
     category: 'MAINTENANCE';
     requestId: string;
     retryAfterSeconds?: number;
 } | {
-    code: 'INTERNAL_ERROR';
+    code: 'SEMA_NOT_FOUND';
     category: 'MAINTENANCE';
     requestId: string;
 } | {
-    code: 'ANSWER_NOT_FOUND';
-    category: 'VALIDATION';
+    code: 'RATE_LIMITED';
+    category: 'RATE_LIMIT';
     requestId: string;
-} | {
-    code: 'REVISION_CONFLICT';
-    category: 'CONFLICT';
-    requestId: string;
+    retryAfterSeconds?: number;
 };
 
 export type ApiErrorEnvelope = {
     error: ApiError;
-};
-
-export type AnswerWriteReceipt = {
-    answerId: EntityId;
-    revision: Revision;
-    mode: 'CREATED' | 'UPDATED';
-    acceptedDateKst: KstDate;
-};
-
-export type AnswerDeleteReceipt = {
-    answerId: EntityId;
-    effect: 'DELETED' | 'ALREADY_ABSENT';
-    deletedAt: Instant;
-};
-
-export type AnswerWritePresentation = {
-    state: 'AVAILABLE';
-    value: {
-        question: QuestionSnapshot;
-        excerpt: ExcerptAvailability;
-        activeAnswerCount: CountAvailability;
-    };
-} | {
-    state: 'UNAVAILABLE';
-    retryable: boolean;
-} | {
-    state: 'ACKNOWLEDGED';
-} | {
-    state: 'RESOURCE_CHANGED';
-};
-
-export type AnswerDeletePresentation = {
-    state: 'AVAILABLE';
-    value: {
-        activeAnswerCount: CountAvailability;
-    };
-} | {
-    state: 'UNAVAILABLE';
-    retryable: boolean;
-} | {
-    state: 'ACKNOWLEDGED';
-};
-
-export type Reconciliation = {
-    checkedAt: Instant;
-    nextAction: 'CREATE_CURRENT_DAY' | 'RETURN_TODAY' | 'RETURN_ARCHIVE';
-} | {
-    checkedAt: Instant;
-    nextAction: 'REVIEW_CURRENT_ANSWER';
-    answerId: EntityId;
-    revision: Revision;
-};
-
-export type AnswerWritePrepared = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_WRITE';
-    target: {
-        mode: 'CREATE';
-        dailySemaId: EntityId;
-    } | {
-        mode: 'UPDATE';
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'PREPARED';
-};
-
-export type AnswerWriteExecuting = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_WRITE';
-    target: {
-        mode: 'CREATE';
-        dailySemaId: EntityId;
-    } | {
-        mode: 'UPDATE';
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'EXECUTING';
-};
-
-export type AnswerWriteSucceeded = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_WRITE';
-    target: {
-        mode: 'CREATE';
-        dailySemaId: EntityId;
-    } | {
-        mode: 'UPDATE';
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'SUCCEEDED';
-    completedAt: Instant;
-    resultExpiresAt: Instant;
-    proof: AnswerWriteReceipt;
-    presentation: AnswerWritePresentation;
-};
-
-export type AnswerWriteNotApplied = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_WRITE';
-    target: {
-        mode: 'CREATE';
-        dailySemaId: EntityId;
-    } | {
-        mode: 'UPDATE';
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'NOT_APPLIED';
-    completedAt: Instant;
-    resultExpiresAt: Instant;
-    error: {
-        code: 'ANSWER_CONTENT_INVALID';
-        category: 'VALIDATION';
-    } | {
-        code: 'ANSWER_NOT_FOUND';
-        category: 'VALIDATION';
-    } | {
-        code: 'REVISION_CONFLICT';
-        category: 'CONFLICT';
-    } | {
-        code: 'COMMAND_CLOSED';
-        category: 'CONFLICT';
-    } | {
-        code: 'COMMAND_EXPIRED';
-        category: 'CONFLICT';
-    };
-};
-
-export type AnswerWriteClosedOutcomeUnavailable = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_WRITE';
-    target: {
-        mode: 'CREATE';
-        dailySemaId: EntityId;
-    } | {
-        mode: 'UPDATE';
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'CLOSED_OUTCOME_UNAVAILABLE';
-    executionSealed: true;
-    reconciliation?: Reconciliation;
-};
-
-export type AnswerDeletePrepared = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_DELETE';
-    target: {
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'PREPARED';
-};
-
-export type AnswerDeleteExecuting = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_DELETE';
-    target: {
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'EXECUTING';
-};
-
-export type AnswerDeleteSucceeded = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_DELETE';
-    target: {
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'SUCCEEDED';
-    completedAt: Instant;
-    resultExpiresAt: Instant;
-    proof: AnswerDeleteReceipt;
-    presentation: AnswerDeletePresentation;
-};
-
-export type AnswerDeleteNotApplied = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_DELETE';
-    target: {
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'NOT_APPLIED';
-    completedAt: Instant;
-    resultExpiresAt: Instant;
-    error: {
-        code: 'ANSWER_NOT_FOUND';
-        category: 'VALIDATION';
-    } | {
-        code: 'REVISION_CONFLICT';
-        category: 'CONFLICT';
-    } | {
-        code: 'COMMAND_CLOSED';
-        category: 'CONFLICT';
-    } | {
-        code: 'COMMAND_EXPIRED';
-        category: 'CONFLICT';
-    };
-};
-
-export type AnswerDeleteClosedOutcomeUnavailable = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_DELETE';
-    target: {
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'CLOSED_OUTCOME_UNAVAILABLE';
-    executionSealed: true;
-    reconciliation?: Reconciliation;
-};
-
-export type AllDataDeletePrepared = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ALL_DATA_DELETE';
-    target: {
-        [key: string]: unknown;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'PREPARED';
-};
-
-export type AllDataDeleteExecuting = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ALL_DATA_DELETE';
-    target: {
-        [key: string]: unknown;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'EXECUTING';
-};
-
-export type AllDataDeleteSucceeded = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ALL_DATA_DELETE';
-    target: {
-        [key: string]: unknown;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'SUCCEEDED';
-    completedAt: Instant;
-    resultExpiresAt: Instant;
-    proof: AllDataDeleteReceipt;
-};
-
-export type AllDataDeleteNotApplied = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ALL_DATA_DELETE';
-    target: {
-        [key: string]: unknown;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'NOT_APPLIED';
-    completedAt: Instant;
-    resultExpiresAt: Instant;
-    error: {
-        code: 'COMMAND_CLOSED';
-        category: 'CONFLICT';
-    } | {
-        code: 'COMMAND_EXPIRED';
-        category: 'CONFLICT';
-    } | {
-        code: 'ALL_DATA_DELETE_FAILED';
-        category: 'MAINTENANCE';
-    };
-};
-
-export type AllDataDeleteClosedOutcomeUnavailable = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ALL_DATA_DELETE';
-    target: {
-        [key: string]: unknown;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'CLOSED_OUTCOME_UNAVAILABLE';
-    executionSealed: true;
-    reconciliation?: Reconciliation;
-};
-
-export type AnswerWriteCommandResult = AnswerWritePrepared | AnswerWriteExecuting | AnswerWriteSucceeded | AnswerWriteNotApplied | AnswerWriteClosedOutcomeUnavailable;
-
-export type AnswerDeleteCommandResult = AnswerDeletePrepared | AnswerDeleteExecuting | AnswerDeleteSucceeded | AnswerDeleteNotApplied | AnswerDeleteClosedOutcomeUnavailable;
-
-export type AllDataDeleteCommandResult = AllDataDeletePrepared | AllDataDeleteExecuting | AllDataDeleteSucceeded | AllDataDeleteNotApplied | AllDataDeleteClosedOutcomeUnavailable;
-
-export type CommandTicket = AnswerWritePrepared | AnswerDeletePrepared | AllDataDeletePrepared;
-
-export type ExecutingCommandResult = AnswerWriteExecuting | AnswerDeleteExecuting | AllDataDeleteExecuting;
-
-export type SettledCommandResult = AnswerWriteSucceeded | AnswerWriteNotApplied | AnswerWriteClosedOutcomeUnavailable | AnswerDeleteSucceeded | AnswerDeleteNotApplied | AnswerDeleteClosedOutcomeUnavailable | AllDataDeleteSucceeded | AllDataDeleteNotApplied | AllDataDeleteClosedOutcomeUnavailable;
-
-export type CommandResult = AnswerWritePrepared | AnswerWriteExecuting | AnswerWriteSucceeded | AnswerWriteNotApplied | AnswerWriteClosedOutcomeUnavailable | AnswerDeletePrepared | AnswerDeleteExecuting | AnswerDeleteSucceeded | AnswerDeleteNotApplied | AnswerDeleteClosedOutcomeUnavailable | AllDataDeletePrepared | AllDataDeleteExecuting | AllDataDeleteSucceeded | AllDataDeleteNotApplied | AllDataDeleteClosedOutcomeUnavailable;
-
-export type AnswerWriteClosedOutcomeUnavailableReconciled = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_WRITE';
-    target: {
-        mode: 'CREATE';
-        dailySemaId: EntityId;
-    } | {
-        mode: 'UPDATE';
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'CLOSED_OUTCOME_UNAVAILABLE';
-    executionSealed: true;
-    reconciliation: Reconciliation;
-};
-
-export type AnswerDeleteClosedOutcomeUnavailableReconciled = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ANSWER_DELETE';
-    target: {
-        answerId: EntityId;
-        expectedRevision: Revision;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'CLOSED_OUTCOME_UNAVAILABLE';
-    executionSealed: true;
-    reconciliation: Reconciliation;
-};
-
-export type AllDataDeleteClosedOutcomeUnavailableReconciled = {
-    ticketId: EntityId;
-    operationId: OperationId;
-    kind: 'ALL_DATA_DELETE';
-    target: {
-        [key: string]: unknown;
-    };
-    acceptedAt: Instant;
-    acceptedDateKst: KstDate;
-    executeBy: Instant;
-    state: 'CLOSED_OUTCOME_UNAVAILABLE';
-    executionSealed: true;
-    reconciliation: Reconciliation;
-};
-
-export type ClosureResult = AnswerWriteSucceeded | AnswerWriteNotApplied | AnswerWriteClosedOutcomeUnavailableReconciled | AnswerDeleteSucceeded | AnswerDeleteNotApplied | AnswerDeleteClosedOutcomeUnavailableReconciled | AllDataDeleteSucceeded | AllDataDeleteNotApplied | AllDataDeleteClosedOutcomeUnavailableReconciled;
-
-export type ProductEventInput = {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'onboarding_started';
-    occurredAt: Instant;
-    properties: {
-        [key: string]: never;
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'onboarding_skipped';
-    occurredAt: Instant;
-    properties: {
-        [key: string]: never;
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'today_sema_viewed';
-    occurredAt: Instant;
-    properties: {
-        answerState: 'UNANSWERED' | 'ANSWERED';
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'alternate_question_viewed';
-    occurredAt: Instant;
-    properties: {
-        [key: string]: never;
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'sema_question_changed';
-    occurredAt: Instant;
-    properties: {
-        from: 'PRIMARY' | 'ALTERNATE';
-        to: 'PRIMARY' | 'ALTERNATE';
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'answer_started';
-    occurredAt: Instant;
-    properties: {
-        mode: 'CREATE' | 'UPDATE';
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'answer_save_failed';
-    occurredAt: Instant;
-    properties: {
-        mode: 'CREATE' | 'UPDATE';
-        certainty: 'NOT_APPLIED' | 'UNKNOWN';
-        reasonCode: 'VALIDATION_REJECTED' | 'DATE_CHANGED' | 'CONTENT_REPLACED' | 'CONFLICT' | 'NETWORK_UNCONFIRMED' | 'SERVER_UNAVAILABLE' | 'PROTOCOL_UNCONFIRMED' | 'COMMAND_CLOSED' | 'COMMAND_EXPIRED';
-    };
-} | {
-    eventId: OperationId;
-    schemaVersion: 1;
-    name: 'archive_viewed';
-    occurredAt: Instant;
-    properties: {
-        state: 'EMPTY' | 'NON_EMPTY';
-    };
-};
-
-export type ProductEventBatchInput = {
-    events: Array<ProductEventInput>;
-    appVersion?: string;
-    platform?: 'IOS' | 'ANDROID';
 };
 
 export type EstablishSessionData = {
@@ -878,7 +262,7 @@ export type EstablishSessionData = {
 
 export type EstablishSessionErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
@@ -889,81 +273,96 @@ export type EstablishSessionResponses = {
     /**
      * 성공
      */
-    201: EstablishSessionResponse;
+    201: SessionResponse;
 };
 
-export type EstablishSessionResponse2 = EstablishSessionResponses[keyof EstablishSessionResponses];
+export type EstablishSessionResponse = EstablishSessionResponses[keyof EstablishSessionResponses];
 
-export type GetPassengerData = {
+export type GetConsentPoliciesData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/v1/passenger';
+    url: '/v1/consent-policies';
 };
 
-export type GetPassengerErrors = {
+export type GetConsentPoliciesErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
 
-export type GetPassengerError = GetPassengerErrors[keyof GetPassengerErrors];
+export type GetConsentPoliciesError = GetConsentPoliciesErrors[keyof GetConsentPoliciesErrors];
 
-export type GetPassengerResponses = {
+export type GetConsentPoliciesResponses = {
     /**
      * 성공
      */
-    200: PassengerProfile;
+    200: ConsentPoliciesResponse;
 };
 
-export type GetPassengerResponse = GetPassengerResponses[keyof GetPassengerResponses];
+export type GetConsentPoliciesResponse = GetConsentPoliciesResponses[keyof GetConsentPoliciesResponses];
 
-export type CreatePassengerData = {
-    body: CreatePassengerInput;
-    headers: {
-        'Idempotency-Key': OperationId;
-    };
+export type CreateMemberData = {
+    body: CreateMemberInput;
     path?: never;
     query?: never;
-    url: '/v1/passenger';
+    url: '/v1/members';
 };
 
-export type CreatePassengerErrors = {
+export type CreateMemberErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
 
-export type CreatePassengerError = CreatePassengerErrors[keyof CreatePassengerErrors];
+export type CreateMemberError = CreateMemberErrors[keyof CreateMemberErrors];
 
-export type CreatePassengerResponses = {
+export type CreateMemberResponses = {
     /**
      * 성공
      */
-    200: CreatePassengerResponse;
-    /**
-     * 성공
-     */
-    201: CreatePassengerResponse;
+    201: ActiveSessionResponse;
 };
 
-export type CreatePassengerResponse2 = CreatePassengerResponses[keyof CreatePassengerResponses];
+export type CreateMemberResponse = CreateMemberResponses[keyof CreateMemberResponses];
+
+export type GetMemberData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/members/me';
+};
+
+export type GetMemberErrors = {
+    /**
+     * 백엔드 전환 가이드의 HTTP 오류
+     */
+    default: ApiErrorEnvelope;
+};
+
+export type GetMemberError = GetMemberErrors[keyof GetMemberErrors];
+
+export type GetMemberResponses = {
+    /**
+     * 성공
+     */
+    200: MemberProfile;
+};
+
+export type GetMemberResponse = GetMemberResponses[keyof GetMemberResponses];
 
 export type SetNicknameData = {
-    body: SetNicknameInput;
-    headers: {
-        'Idempotency-Key': OperationId;
-    };
+    body: UpdateNicknameInput;
     path?: never;
     query?: never;
-    url: '/v1/passenger/nickname';
+    url: '/v1/members/me/nickname';
 };
 
 export type SetNicknameErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
@@ -974,7 +373,7 @@ export type SetNicknameResponses = {
     /**
      * 성공
      */
-    200: NicknameReceipt;
+    200: MemberProfile;
 };
 
 export type SetNicknameResponse = SetNicknameResponses[keyof SetNicknameResponses];
@@ -982,15 +381,13 @@ export type SetNicknameResponse = SetNicknameResponses[keyof SetNicknameResponse
 export type GetTodayData = {
     body?: never;
     path?: never;
-    query?: {
-        excerptProfile?: ExcerptProfile;
-    };
-    url: '/v1/today';
+    query?: never;
+    url: '/v1/semas/today';
 };
 
 export type GetTodayErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
@@ -1001,159 +398,37 @@ export type GetTodayResponses = {
     /**
      * 성공
      */
-    200: TodayReadModel;
+    200: TodaySemaResponse;
 };
 
 export type GetTodayResponse = GetTodayResponses[keyof GetTodayResponses];
 
-export type PrepareAnswerWriteData = {
-    body: PrepareAnswerWriteInput;
-    headers: {
-        'Idempotency-Key': OperationId;
-    };
+export type CreateAnswerData = {
+    body: CreateAnswerInput;
     path?: never;
     query?: never;
-    url: '/v1/answer-write-commands';
-};
-
-export type PrepareAnswerWriteErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type PrepareAnswerWriteError = PrepareAnswerWriteErrors[keyof PrepareAnswerWriteErrors];
-
-export type PrepareAnswerWriteResponses = {
-    /**
-     * 성공
-     */
-    200: AnswerWriteCommandResult;
-    /**
-     * 성공
-     */
-    201: AnswerWritePrepared;
-};
-
-export type PrepareAnswerWriteResponse = PrepareAnswerWriteResponses[keyof PrepareAnswerWriteResponses];
-
-export type ExecuteCommandData = {
-    body: ExecuteCommandInput;
-    path: {
-        ticketId: EntityId;
-    };
-    query?: never;
-    url: '/v1/commands/{ticketId}/execution';
-};
-
-export type ExecuteCommandErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type ExecuteCommandError = ExecuteCommandErrors[keyof ExecuteCommandErrors];
-
-export type ExecuteCommandResponses = {
-    /**
-     * 성공
-     */
-    200: SettledCommandResult;
-    /**
-     * 성공
-     */
-    202: ExecutingCommandResult;
-};
-
-export type ExecuteCommandResponse = ExecuteCommandResponses[keyof ExecuteCommandResponses];
-
-export type GetCommandResultData = {
-    body?: never;
-    path: {
-        ticketId: EntityId;
-    };
-    query?: {
-        excerptProfile?: ExcerptProfile;
-    };
-    url: '/v1/commands/{ticketId}';
-};
-
-export type GetCommandResultErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type GetCommandResultError = GetCommandResultErrors[keyof GetCommandResultErrors];
-
-export type GetCommandResultResponses = {
-    /**
-     * 성공
-     */
-    200: CommandResult;
-};
-
-export type GetCommandResultResponse = GetCommandResultResponses[keyof GetCommandResultResponses];
-
-export type AcknowledgeCommandResultData = {
-    body: EmptyInput;
-    path: {
-        ticketId: EntityId;
-    };
-    query?: never;
-    url: '/v1/commands/{ticketId}/acknowledgement';
-};
-
-export type AcknowledgeCommandResultErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type AcknowledgeCommandResultError = AcknowledgeCommandResultErrors[keyof AcknowledgeCommandResultErrors];
-
-export type AcknowledgeCommandResultResponses = {
-    /**
-     * 성공
-     */
-    204: void;
-};
-
-export type AcknowledgeCommandResultResponse = AcknowledgeCommandResultResponses[keyof AcknowledgeCommandResultResponses];
-
-export type ListAnswersData = {
-    body?: never;
-    path?: never;
-    query?: {
-        cursor?: string;
-        excerptProfile?: ExcerptProfile;
-    };
     url: '/v1/answers';
 };
 
-export type ListAnswersErrors = {
+export type CreateAnswerErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
 
-export type ListAnswersError = ListAnswersErrors[keyof ListAnswersErrors];
+export type CreateAnswerError = CreateAnswerErrors[keyof CreateAnswerErrors];
 
-export type ListAnswersResponses = {
+export type CreateAnswerResponses = {
     /**
      * 성공
      */
-    200: AnswerPage;
+    201: SaveAnswerResult;
 };
 
-export type ListAnswersResponse = ListAnswersResponses[keyof ListAnswersResponses];
+export type CreateAnswerResponse = CreateAnswerResponses[keyof CreateAnswerResponses];
 
-export type GetAnswerData = {
+export type DeleteAnswerData = {
     body?: never;
     path: {
         answerId: EntityId;
@@ -1162,138 +437,47 @@ export type GetAnswerData = {
     url: '/v1/answers/{answerId}';
 };
 
-export type GetAnswerErrors = {
+export type DeleteAnswerErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
 
-export type GetAnswerError = GetAnswerErrors[keyof GetAnswerErrors];
+export type DeleteAnswerError = DeleteAnswerErrors[keyof DeleteAnswerErrors];
 
-export type GetAnswerResponses = {
+export type DeleteAnswerResponses = {
     /**
      * 성공
      */
-    200: AnswerDetail;
+    200: DeleteAnswerResult;
 };
 
-export type GetAnswerResponse = GetAnswerResponses[keyof GetAnswerResponses];
+export type DeleteAnswerResponse = DeleteAnswerResponses[keyof DeleteAnswerResponses];
 
-export type PrepareAnswerDeleteData = {
-    body: PrepareAnswerDeleteInput;
-    headers: {
-        'Idempotency-Key': OperationId;
-    };
-    path?: never;
-    query?: never;
-    url: '/v1/answer-delete-commands';
-};
-
-export type PrepareAnswerDeleteErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type PrepareAnswerDeleteError = PrepareAnswerDeleteErrors[keyof PrepareAnswerDeleteErrors];
-
-export type PrepareAnswerDeleteResponses = {
-    /**
-     * 성공
-     */
-    200: AnswerDeleteCommandResult;
-    /**
-     * 성공
-     */
-    201: AnswerDeletePrepared;
-};
-
-export type PrepareAnswerDeleteResponse = PrepareAnswerDeleteResponses[keyof PrepareAnswerDeleteResponses];
-
-export type PrepareAllDataDeleteData = {
-    body: EmptyInput;
-    headers: {
-        'Idempotency-Key': OperationId;
-    };
-    path?: never;
-    query?: never;
-    url: '/v1/data-deletion-commands';
-};
-
-export type PrepareAllDataDeleteErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type PrepareAllDataDeleteError = PrepareAllDataDeleteErrors[keyof PrepareAllDataDeleteErrors];
-
-export type PrepareAllDataDeleteResponses = {
-    /**
-     * 성공
-     */
-    200: AllDataDeleteCommandResult;
-    /**
-     * 성공
-     */
-    201: AllDataDeletePrepared;
-};
-
-export type PrepareAllDataDeleteResponse = PrepareAllDataDeleteResponses[keyof PrepareAllDataDeleteResponses];
-
-export type SubmitProductEventBatchData = {
-    body: ProductEventBatchInput;
-    path?: never;
-    query?: never;
-    url: '/v1/analytics/event-batches';
-};
-
-export type SubmitProductEventBatchErrors = {
-    /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
-     */
-    default: ApiErrorEnvelope;
-};
-
-export type SubmitProductEventBatchError = SubmitProductEventBatchErrors[keyof SubmitProductEventBatchErrors];
-
-export type SubmitProductEventBatchResponses = {
-    /**
-     * 성공
-     */
-    202: unknown;
-};
-
-export type CloseCommandData = {
-    body: EmptyInput;
+export type UpdateAnswerData = {
+    body: UpdateAnswerInput;
     path: {
-        ticketId: EntityId;
+        answerId: EntityId;
     };
     query?: never;
-    url: '/v1/commands/{ticketId}/closure';
+    url: '/v1/answers/{answerId}';
 };
 
-export type CloseCommandErrors = {
+export type UpdateAnswerErrors = {
     /**
-     * 인증된 오류 envelope; 상태별 의미는 05 §8
+     * 백엔드 전환 가이드의 HTTP 오류
      */
     default: ApiErrorEnvelope;
 };
 
-export type CloseCommandError = CloseCommandErrors[keyof CloseCommandErrors];
+export type UpdateAnswerError = UpdateAnswerErrors[keyof UpdateAnswerErrors];
 
-export type CloseCommandResponses = {
+export type UpdateAnswerResponses = {
     /**
      * 성공
      */
-    200: ClosureResult;
-    /**
-     * 성공
-     */
-    202: ExecutingCommandResult;
+    200: SaveAnswerResult;
 };
 
-export type CloseCommandResponse = CloseCommandResponses[keyof CloseCommandResponses];
+export type UpdateAnswerResponse = UpdateAnswerResponses[keyof UpdateAnswerResponses];

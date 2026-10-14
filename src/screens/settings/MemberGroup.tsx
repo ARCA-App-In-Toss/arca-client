@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNicknameSave } from '../../app/hooks/passenger.ts';
+import { useNicknameSave } from '../../app/hooks/member.ts';
 import { checkNickname, type NicknameError } from '../../domain/text/nickname.ts';
 import { InlineStatus, PixelButton, PixelTextField } from '../../ui/components.tsx';
 import { type CopyId, copy, fill } from '../../ui/copy.ts';
@@ -11,12 +11,12 @@ const errorCopy: Record<NicknameError, CopyId> = {
   forbidden: 'CPY-F30-014',
 };
 
-export function PassengerGroup({
-  passengerCode,
+export function MemberGroup({
+  memberCode,
   nickname,
   onEditingChange,
 }: {
-  passengerCode: string;
+  memberCode: string;
   nickname: string | null;
   onEditingChange?: (editing: boolean) => void;
 }) {
@@ -78,11 +78,10 @@ export function PassengerGroup({
       close();
       return;
     }
-    if (result.kind === 'expired') input.replace(result.currentNickname ?? '');
     setProblem(nicknameProblem(result, { unsent: 'CPY-F30-021', rejected: 'CPY-F30-020' }));
   };
 
-  const displayName = nickname ?? passengerCode;
+  const displayName = nickname ?? memberCode;
   const status = saving ? copy['CPY-F30-018'] : problem ? copy[problem.id] : saved ? copy['CPY-F30-019'] : null;
   const showUnchanged = editing && unchanged && !saving && !problem;
   const describedBy = `f30-help f30-count${visibleError ? ' f30-error' : ''}${showUnchanged ? ' f30-unchanged' : ''}`;
@@ -96,7 +95,7 @@ export function PassengerGroup({
         </div>
         <div>
           <dt className="arca-text-secondary">{copy['CPY-F30-005']}</dt>
-          <dd>{fill(copy['CPY-F30-006'], { passengerCode })}</dd>
+          <dd>{fill(copy['CPY-F30-006'], { memberCode })}</dd>
         </div>
       </dl>
       {editing ? (

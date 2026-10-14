@@ -1,3 +1,5 @@
+import type { ConsentPolicy } from './models.ts';
+
 export class TransportFailure extends Error {
   override readonly name = 'TransportFailure';
   readonly reason: 'network' | 'timeout' | 'aborted' | 'not-configured';
@@ -24,12 +26,20 @@ export class DomainFailure extends Error {
   readonly category: DomainErrorCategory;
   readonly requestId: string;
   readonly recoveryAllowed: boolean;
-  constructor(code: string, category: DomainErrorCategory, requestId: string, recoveryAllowed: boolean) {
+  readonly policies: readonly ConsentPolicy[] | null;
+  constructor(
+    code: string,
+    category: DomainErrorCategory,
+    requestId: string,
+    recoveryAllowed: boolean,
+    policies: readonly ConsentPolicy[] | null = null,
+  ) {
     super(`domain:${code}`);
     this.code = code;
     this.category = category;
     this.requestId = requestId;
     this.recoveryAllowed = recoveryAllowed;
+    this.policies = policies;
   }
 }
 

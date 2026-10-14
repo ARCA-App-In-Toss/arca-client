@@ -19,7 +19,7 @@ export function RootTabs({ current }: { current: RootTabId }) {
 }
 
 export function RootHeader({ title, count }: { title: string; count?: Today['activeAnswerCount'] | undefined }) {
-  const memoryCount = count?.state === 'AVAILABLE' ? formatCount(count.value.count) : null;
+  const memoryCount = count ? formatCount(count.count) : null;
   return (
     <div className="arca-root-header">
       <ScreenTitle>{title}</ScreenTitle>

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { KeptDraft, WriteView } from '../../domain/commands/answerWriteCoordinator.ts';
-import type { PrepareAnswerUpdate } from '../../domain/models.ts';
+import type { AnswerUpdate } from '../../domain/models.ts';
 import { useAppServices } from '../services.tsx';
 
 const IDLE: WriteView = { kind: 'idle' };
 
 export interface AnswerCommandHandle {
   view: WriteView;
-  saveEdit(input: PrepareAnswerUpdate, flushKept: () => Promise<KeptDraft | null>): void;
-  remove(expectedRevision: string): void;
+  saveEdit(input: AnswerUpdate, flushKept: () => Promise<KeptDraft | null>): void;
+  remove(): void;
   recheck(): void;
-  close(): void;
+  retry(): void;
   consume(): void;
 }
 
@@ -24,17 +24,17 @@ export function useAnswerCommand(answerId: string | null): AnswerCommandHandle {
   const view = useSyncExternalStore(subscribe, getView, getView);
   const actions = useMemo(
     () => ({
-      saveEdit: (input: PrepareAnswerUpdate, flushKept: () => Promise<KeptDraft | null>) => {
+      saveEdit: (input: AnswerUpdate, flushKept: () => Promise<KeptDraft | null>) => {
         void answers.save({ input, flushDraft: flushKept });
       },
-      remove: (expectedRevision: string) => {
-        if (answerId) void answers.delete({ input: { answerId, expectedRevision } });
+      remove: () => {
+        if (answerId) void answers.delete({ input: { answerId } });
       },
       recheck: () => {
         if (answerId) void answers.recheck(answerId);
       },
-      close: () => {
-        if (answerId) void answers.close(answerId);
+      retry: () => {
+        if (answerId) void answers.retry(answerId);
       },
       consume: () => {
         if (answerId) answers.acknowledgeView(answerId);
@@ -67,7 +67,7 @@ export function usePendingAnswer(answerId: string | null): PendingAnswer {
     void read().then((found) => {
       if (!active || !found) return;
       void answers
-        .recheck(answerId, { quiet: found.kind === 'finishing' })
+        .recheck(answerId)
         .catch(() => undefined)
         .then(() => (active ? read() : null));
     });

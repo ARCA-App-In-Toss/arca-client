@@ -12,7 +12,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 async function bootIntro() {
-  const booted = bootApp(server, { base: 'server.prePassenger' });
+  const booted = bootApp(server, { base: 'server.guest' });
   await act(() => booted.started);
   await findTitle(copy['CPY-F01-001']);
   return booted;

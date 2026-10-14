@@ -4,27 +4,23 @@ import { createHttpTransport } from '../data/api/transport.ts';
 import { queryKeys } from '../data/query/keys.ts';
 import { StorageJournal } from '../data/storage/journal.ts';
 import { AnalyticsQueue } from '../domain/analytics/analyticsQueue.ts';
-import { ArchiveChains } from '../domain/archive/archiveChains.ts';
-import { AnswerWriteCoordinator, type Completion } from '../domain/commands/answerWriteCoordinator.ts';
+import { AnswerWriteCoordinator, type Completion, type SyncEvent } from '../domain/commands/answerWriteCoordinator.ts';
 import { AnswerWriteStore } from '../domain/commands/answerWriteStore.ts';
-import { AllDataDeleteCoordinator } from '../domain/deletion/allDataDeleteCoordinator.ts';
 import { DraftRepository } from '../domain/drafts/draftRepository.ts';
 import type { PastDraftEntry } from '../domain/drafts/pastDraftEntry.ts';
-import type { Today } from '../domain/models.ts';
+import type { AnswerDetail, Today } from '../domain/models.ts';
 import { BoardingCoordinator } from '../domain/onboarding/boardingCoordinator.ts';
 import { NicknameCoordinator } from '../domain/onboarding/nicknameCoordinator.ts';
 import type { ArcaApi } from '../domain/ports/api.ts';
 import type { PlatformPort } from '../domain/ports/platform.ts';
 import type { JournalPort, ManifestScope } from '../domain/ports/storage.ts';
 import { SessionController, type SessionSummary } from '../domain/session/sessionController.ts';
-import { createAnswerSync } from './answerSync.ts';
-import { type BootstrapState, runBootstrap, START_EXCERPT_PROFILE } from './bootstrap/bootstrap.ts';
+import { type BootstrapState, runBootstrap } from './bootstrap/bootstrap.ts';
 
 export interface AppSnapshot {
   bootstrap: BootstrapState;
-  session: Pick<SessionSummary, 'ownerScope' | 'mode' | 'epoch' | 'generation'> | null;
+  session: SessionSummary | null;
 }
-
 export interface AppServices {
   platform: PlatformPort;
   api: ArcaApi;
@@ -34,193 +30,136 @@ export interface AppServices {
   drafts: DraftRepository;
   writes: AnswerWriteCoordinator;
   answers: AnswerWriteCoordinator;
-  archive: ArchiveChains;
   boarding: BoardingCoordinator;
   nickname: NicknameCoordinator;
-  deletion: AllDataDeleteCoordinator;
   analytics: AnalyticsQueue;
-  takeAllDeletedNotice(): boolean;
   completions: Map<string, Completion>;
   answerRefs: Map<string, string>;
   draftRefs: Map<string, PastDraftEntry>;
+  cacheToday(today: Today): void;
   consumeTodaySeed(): boolean;
   getSnapshot(): AppSnapshot;
   subscribe(listener: () => void): () => void;
   start(): Promise<BootstrapState>;
   finishBoarding(): void;
-  leaveDeletion(): void;
 }
-
 export interface AppServicesConfig {
   platform: PlatformPort;
   apiBase: string | undefined;
   fetch?: typeof fetch;
 }
-
 export function createAppServices(config: AppServicesConfig): AppServices {
   const { platform } = config;
-  const transport = createHttpTransport({
-    baseUrl: config.apiBase,
-    ...(config.fetch ? { fetch: config.fetch } : {}),
-  });
-  const api = createArcaApi(transport);
+  const api = createArcaApi(
+    createHttpTransport({ baseUrl: config.apiBase, ...(config.fetch ? { fetch: config.fetch } : {}) }),
+  );
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false, gcTime: 5 * 60_000 } },
   });
   const session = new SessionController({ api, identity: platform.identity, clock: platform.clock });
   const journal = new StorageJournal(platform.storage, platform.clock);
-  const analytics = new AnalyticsQueue({ session, api, clock: platform.clock, appVersion: __APP_VERSION__ });
-
+  const analytics = new AnalyticsQueue();
   let snapshot: AppSnapshot = { bootstrap: { phase: 'starting' }, session: null };
   const listeners = new Set<() => void>();
   const publish = (next: AppSnapshot) => {
     snapshot = next;
     for (const listener of listeners) listener();
   };
-
   let currentArea: ManifestScope | null = null;
-  let deletionFenced = false;
-  let allDeletedNotice = false;
   let todaySeeded = false;
   let running: Promise<BootstrapState> | null = null;
-
   const completions = new Map<string, Completion>();
   const answerRefs = new Map<string, string>();
   const draftRefs = new Map<string, PastDraftEntry>();
-
-  const commandFence = () =>
-    snapshot.session && currentArea
-      ? { ownerScope: snapshot.session.ownerScope, generation: snapshot.session.generation }
-      : null;
-
-  const boarding = new BoardingCoordinator({ session, journal });
+  const boarding = new BoardingCoordinator({ session });
   const nickname = new NicknameCoordinator({
     session,
     api,
-    journal,
     network: platform.network,
-    area: () => currentArea,
-    syncProfile: async () => {
-      const owner = snapshot.session;
-      if (!owner?.generation) return;
-      await queryClient.invalidateQueries({ queryKey: queryKeys.passenger(owner.ownerScope, owner.generation) });
+    syncProfile: (profile) => {
+      const s = session.summary;
+      if (s?.accountScope) queryClient.setQueryData(queryKeys.member(s.ownerScope, s.accountScope), profile);
     },
-    deletionFenced: () => deletionFenced,
   });
   const drafts = new DraftRepository({ journal, clock: platform.clock, area: () => currentArea });
-  const archive = new ArchiveChains({
-    session,
-    api,
-    scope: () =>
-      snapshot.session?.mode === 'ACTIVE' && snapshot.session.generation && currentArea
-        ? { ownerScope: snapshot.session.ownerScope, generation: snapshot.session.generation }
-        : null,
+  const cacheToday = (today: Today) => {
+    const s = session.summary;
+    if (!s?.accountScope) return;
+    queryClient.setQueryData(queryKeys.today(s.ownerScope, s.accountScope), today);
+    if (today.answer.state === 'ANSWERED')
+      queryClient.setQueryData(
+        queryKeys.answer(s.ownerScope, s.accountScope, today.answer.value.answerId),
+        today.answer.value,
+      );
+  };
+  const sync = async (event: SyncEvent) => {
+    const s = session.summary;
+    if (!s?.accountScope) return;
+    if (event.kind === 'today') {
+      cacheToday(event.today);
+      return;
+    }
+    const key = queryKeys.today(s.ownerScope, s.accountScope);
+    const today = queryClient.getQueryData<Today>(key);
+    if (event.kind === 'saved') {
+      const a = event.result.answer;
+      queryClient.setQueryData<AnswerDetail>(queryKeys.answer(s.ownerScope, s.accountScope, a.answerId), a);
+      if (today)
+        cacheToday({
+          ...today,
+          activeAnswerCount: event.result.activeAnswerCount,
+          ...(a.dailySemaId === today.sema.dailySemaId ? { answer: { state: 'ANSWERED', value: a } } : {}),
+        });
+    } else {
+      queryClient.removeQueries({ queryKey: queryKeys.answer(s.ownerScope, s.accountScope, event.answerId) });
+      completions.delete(event.answerId);
+      if (today)
+        cacheToday({
+          ...today,
+          ...(event.count >= 0 ? { activeAnswerCount: { count: event.count } } : {}),
+          ...(today.answer.state === 'ANSWERED' && today.answer.value.answerId === event.answerId
+            ? { answer: { state: 'UNANSWERED' } }
+            : {}),
+        });
+    }
+  };
+  const fence = () =>
+    currentArea && snapshot.session
+      ? { ownerScope: snapshot.session.ownerScope, accountScope: snapshot.session.accountScope }
+      : null;
+  const writeStore = new AnswerWriteStore({ journal, area: () => currentArea, now: () => drafts.now() });
+  const answerStore = new AnswerWriteStore({
+    journal,
+    area: () => currentArea,
+    namespace: 'answer',
+    now: () => drafts.now(),
   });
   const writes = new AnswerWriteCoordinator({
     session,
     api,
-    store: new AnswerWriteStore({ journal, area: () => currentArea }),
+    store: writeStore,
     drafts,
     now: () => drafts.now(),
-    fence: commandFence,
-    syncCurrentResources: async () => {
-      const owner = snapshot.session;
-      if (!owner?.generation) return;
-      await queryClient.invalidateQueries({ queryKey: queryKeys.owner(owner.ownerScope) });
-    },
-    deletionFenced: () => deletionFenced,
-  });
-  const syncAnswer = createAnswerSync({
-    session,
-    api,
-    queryClient,
-    archive,
-    currentOwner: () => snapshot.session,
-    forgetAnswer: (answerId) => {
-      completions.delete(answerId);
-      for (const [ref, id] of answerRefs) if (id === answerId) answerRefs.delete(ref);
-    },
+    fence,
+    syncCurrentResources: sync,
   });
   const answers = new AnswerWriteCoordinator({
     session,
     api,
-    store: new AnswerWriteStore({ journal, area: () => currentArea, namespace: 'answer' }),
+    store: answerStore,
     drafts,
     now: () => drafts.now(),
-    fence: commandFence,
-    syncCurrentResources: syncAnswer,
-    deletionFenced: () => deletionFenced,
+    fence,
+    syncCurrentResources: sync,
   });
-
-  const resetVisitMemory = () => {
+  const reset = () => {
     completions.clear();
     answerRefs.clear();
     draftRefs.clear();
     writes.reset();
     answers.reset();
-    archive.reset();
+    analytics.discardAll();
   };
-
-  const recheckAllCommands = async () => {
-    await writes.recheckAll().catch(() => undefined);
-    await answers.recheckAll().catch(() => undefined);
-    await nickname.resume().catch(() => undefined);
-  };
-
-  const deletion = new AllDataDeleteCoordinator({
-    session,
-    api,
-    journal,
-    network: platform.network,
-    area: () => currentArea,
-    hasUnresolvedCommands: async () =>
-      (await writes.hasUnresolved()) || (await answers.hasUnresolved()) || (await nickname.hasUnresolved()),
-    recheckCommands: async () => {
-      deletionFenced = false;
-      try {
-        await writes.recheckAll();
-        await answers.recheckAll();
-        await nickname.resume();
-      } finally {
-        deletionFenced = true;
-      }
-    },
-    setFence: (active) => {
-      deletionFenced = active;
-    },
-    discardMemory: () => {
-      analytics.discardAll();
-      currentArea = null;
-      queryClient.clear();
-      resetVisitMemory();
-    },
-    finish: () => {
-      allDeletedNotice = true;
-      session.discard();
-    },
-    restart: () => {
-      void runStart();
-    },
-  });
-
-  const currentTodayTarget = (): string | null => {
-    const owner = snapshot.session;
-    if (!owner?.generation) return null;
-    const cached = queryClient.getQueryData<Today>(
-      queryKeys.today(owner.ownerScope, owner.generation, START_EXCERPT_PROFILE),
-    );
-    return cached?.sema.dailySemaId ?? null;
-  };
-
-  const runBackgroundRecovery = async (target: string) => {
-    await drafts.purgeExpired().catch(() => undefined);
-    await writes.expirePayloads().catch(() => undefined);
-    await answers.expirePayloads().catch(() => undefined);
-    await writes.recheckAll({ except: currentTodayTarget() }).catch(() => undefined);
-    await answers.recheckAll().catch(() => undefined);
-    if (target !== 'boarded') await nickname.resume().catch(() => undefined);
-  };
-
   const runStart = (reuse?: SessionSummary, handoff: 'boarded' | null = null): Promise<BootstrapState> => {
     running ??= (async () => {
       const previous = snapshot.bootstrap;
@@ -230,24 +169,22 @@ export function createAppServices(config: AppServicesConfig): AppServices {
       });
       currentArea = null;
       const outcome = await runBootstrap(
-        {
-          session,
-          journal,
-          api,
-          queryClient,
-          network: platform.network,
-          resumeCreation: () => boarding.resumeAsActive(),
-          hasPendingDeletion: (area) => deletion.hasPending(area),
-        },
+        { session, journal, api, queryClient, network: platform.network },
         reuse,
         handoff,
       );
       currentArea = outcome.area;
       const result = outcome.state;
-      if (result.phase === 'ready' && result.target === 'deletion') deletionFenced = true;
-      if (outcome.area && result.phase === 'ready' && result.target !== 'deletion') {
+      if (outcome.area && result.phase === 'ready') {
         todaySeeded = true;
-        queueMicrotask(() => void runBackgroundRecovery(result.target));
+        const s = session.summary;
+        if (s?.accountScope) {
+          const today = queryClient.getQueryData<Today>(queryKeys.today(s.ownerScope, s.accountScope));
+          if (today) cacheToday(today);
+        }
+        void drafts.purgeExpired().catch(() => undefined);
+        void writeStore.purgeExpired().catch(() => undefined);
+        void answerStore.purgeExpired().catch(() => undefined);
       }
       const next: BootstrapState =
         result.phase === 'failed' && previous.phase === 'failed' ? { ...result, retry: 'failed' } : result;
@@ -258,76 +195,38 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     });
     return running;
   };
-
   session.subscribe((event) => {
-    const generationChanged =
-      event.kind === 'established' && !!snapshot.session && snapshot.session.generation !== event.summary.generation;
-    if (event.kind === 'discarded' || event.ownerChanged) {
-      currentArea = null;
-      resetVisitMemory();
-    } else if (generationChanged) {
-      resetVisitMemory();
-    }
-
-    const previousMode = snapshot.session?.mode;
     const wasReady = !running && snapshot.bootstrap.phase === 'ready';
     if (event.kind === 'discarded') {
+      currentArea = null;
+      reset();
       queryClient.clear();
       publish({ bootstrap: wasReady ? { phase: 'starting' } : snapshot.bootstrap, session: null });
       if (wasReady) queueMicrotask(() => void runStart());
       return;
     }
-    if (event.ownerChanged) queryClient.clear();
-
-    const { ownerScope, mode, epoch, generation } = event.summary;
-    if (mode === 'DELETION_RECOVERY' && wasReady && !event.ownerChanged) {
-      deletionFenced = true;
-      const current = snapshot.bootstrap;
-      publish({
-        bootstrap: current.phase === 'ready' ? { ...current, target: 'deletion' } : current,
-        session: { ownerScope, mode, epoch, generation },
-      });
-      return;
+    if (event.ownerChanged) {
+      currentArea = null;
+      reset();
+      queryClient.clear();
     }
-
-    const reconcile = wasReady && (event.ownerChanged || previousMode !== mode);
-    publish({
-      bootstrap: reconcile ? { phase: 'starting' } : snapshot.bootstrap,
-      session: { ownerScope, mode, epoch, generation },
-    });
-    const boarded = event.boarded && generation ? event.boarded : null;
-    if (boarded && generation) queryClient.setQueryData(queryKeys.passenger(ownerScope, generation), boarded);
-    if (reconcile) {
-      const summary = event.summary;
-      queueMicrotask(() => void runStart(summary, boarded ? 'boarded' : null));
-    }
+    const reconcile = wasReady && (event.ownerChanged || snapshot.session?.mode !== event.summary.mode);
+    publish({ session: event.summary, bootstrap: reconcile ? { phase: 'starting' } : snapshot.bootstrap });
+    if (event.boarded && event.summary.accountScope)
+      queryClient.setQueryData(queryKeys.member(event.summary.ownerScope, event.summary.accountScope), event.boarded);
+    if (reconcile) queueMicrotask(() => void runStart(event.summary, event.boarded ? 'boarded' : null));
   });
-
-  platform.network.onReconnect(() => analytics.hint());
-
   platform.lifecycle.onVisibilityChange((visible) => {
-    analytics.hint();
-    if (!visible) {
-      writes.suspend();
-      answers.suspend();
-      return;
-    }
-    writes.resume();
-    answers.resume();
-    const ready = snapshot.bootstrap.phase === 'ready' && snapshot.session?.mode === 'ACTIVE' && currentArea !== null;
-    void (async () => {
-      await session.refreshOnForeground().catch(() => undefined);
-      if (!ready) return;
-      const owner = snapshot.session;
-      if (owner?.generation) {
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.today(owner.ownerScope, owner.generation, START_EXCERPT_PROFILE),
-        });
-      }
-      await recheckAllCommands();
-    })();
+    if (!visible) return;
+    void session
+      .refreshOnForeground()
+      .then(() => {
+        const s = session.summary;
+        if (s?.accountScope)
+          void queryClient.invalidateQueries({ queryKey: queryKeys.today(s.ownerScope, s.accountScope) });
+      })
+      .catch(() => undefined);
   });
-
   return {
     platform,
     api,
@@ -337,19 +236,13 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     drafts,
     writes,
     answers,
-    archive,
     boarding,
     nickname,
-    deletion,
     analytics,
-    takeAllDeletedNotice() {
-      const shown = allDeletedNotice;
-      allDeletedNotice = false;
-      return shown;
-    },
     completions,
     answerRefs,
     draftRefs,
+    cacheToday,
     consumeTodaySeed() {
       const seeded = todaySeeded;
       todaySeeded = false;
@@ -358,20 +251,15 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     start: () => runStart(),
-    leaveDeletion() {
-      const current = snapshot.bootstrap;
-      if (current.phase === 'ready' && current.target === 'deletion' && snapshot.session?.mode === 'ACTIVE') {
-        publish({ ...snapshot, bootstrap: { ...current, target: 'today' } });
-      }
-    },
     finishBoarding() {
       const current = snapshot.bootstrap;
-      if (current.phase === 'ready' && current.target === 'boarded') {
+      if (current.phase === 'ready' && current.target === 'boarded')
         publish({ ...snapshot, bootstrap: { ...current, target: 'today' } });
-      }
     },
   };
 }

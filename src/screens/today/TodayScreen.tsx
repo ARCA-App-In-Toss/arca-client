@@ -9,7 +9,7 @@ import { useSkyPhase } from '../../app/hooks/sky.ts';
 import { useToday, useTodayRefreshEvents } from '../../app/hooks/today.ts';
 import { useAnswerWrite, usePendingWrite } from '../../app/hooks/writes.ts';
 import { paths, type QuestionRole, useAnswerRefs, useArcaNavigate } from '../../app/navigation.ts';
-import type { Today, TodayAnswer } from '../../domain/models.ts';
+import type { AnswerDetail, Today } from '../../domain/models.ts';
 import {
   CapsuleDisplay,
   InlineStatus,
@@ -197,7 +197,7 @@ function Unanswered({
   );
 }
 
-function Answered({ today, answer }: { today: Today; answer: TodayAnswer }) {
+function Answered({ today, answer }: { today: Today; answer: AnswerDetail }) {
   const navigate = useArcaNavigate();
   const refs = useAnswerRefs();
 

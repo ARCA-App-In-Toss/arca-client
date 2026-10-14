@@ -35,7 +35,7 @@ export function checkNickname(raw: string): NicknameCheck {
   const empty = count === 0;
   let error: NicknameError | null = null;
   if (hasForbidden(raw)) error = 'forbidden';
-  else if (count > NICKNAME_MAX_GRAPHEMES) error = 'too-long';
+  else if (count > NICKNAME_MAX_GRAPHEMES || normalized.length > 255) error = 'too-long';
   else if (!empty && count < NICKNAME_MIN_GRAPHEMES) error = 'too-short';
   return { normalized, count, empty, error };
 }

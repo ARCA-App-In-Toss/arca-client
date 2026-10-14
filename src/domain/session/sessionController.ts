@@ -1,5 +1,5 @@
 import { DomainFailure, ProtocolFailure, TransportFailure } from '../failures.ts';
-import type { ConsentReceipt, EstablishedSession, PassengerProfile, RecentDeletion, SessionMode } from '../models.ts';
+import type { ConsentReceipt, EstablishedSession, MemberProfile, SessionMode } from '../models.ts';
 import type { ArcaApi, Bearer } from '../ports/api.ts';
 import type { ClockPort, IdentityPort } from '../ports/platform.ts';
 import { digestOwner, type LocalOwnerVerifier, newSalt } from './ownerVerifier.ts';
@@ -12,81 +12,44 @@ export class IdentityUnavailableFailure extends Error {
     this.reason = reason;
   }
 }
-
 export class SessionChangedFailure extends Error {
-  override readonly name = 'SessionChangedFailure';
   constructor() {
     super('session:changed');
   }
 }
-
+export class SessionModeMismatchFailure extends Error {
+  constructor() {
+    super('session:mode');
+  }
+}
 export class StaleResultFailure extends Error {
-  override readonly name = 'StaleResultFailure';
   declare readonly outcome: { kind: 'result'; value: unknown } | { kind: 'error'; error: unknown };
   constructor(outcome: StaleResultFailure['outcome']) {
     super('session:stale');
     Object.defineProperty(this, 'outcome', { value: outcome, enumerable: false });
   }
 }
-
-export class SessionModeMismatchFailure extends Error {
-  override readonly name = 'SessionModeMismatchFailure';
-  constructor() {
-    super('session:mode');
-  }
-}
-
 export interface RequestSnapshot {
   readonly ownerScope: string;
   readonly sessionEpoch: number;
-  readonly dataGeneration: string | null;
+  readonly accountScope: string | null;
   readonly mode: SessionMode;
 }
-
 export interface SessionSummary {
   readonly ownerScope: string;
   readonly mode: SessionMode;
   readonly epoch: number;
-  readonly generation: string | null;
-  readonly consentPolicyCount: number;
-  readonly recentDeletion: RecentDeletion | null;
+  readonly accountScope: string | null;
 }
-
 export type SessionEvent =
-  | {
-      kind: 'established';
-      summary: SessionSummary;
-      ownerChanged: boolean;
-      boarded?: PassengerProfile;
-    }
+  | { kind: 'established'; summary: SessionSummary; ownerChanged: boolean; boarded?: MemberProfile }
   | { kind: 'discarded' };
-
 interface Current {
   summary: SessionSummary;
-  token: string;
-  expiresAtMs: number;
-  receivedAtMs: number;
-  ownerIdentity: string;
   session: EstablishedSession;
+  key: string;
+  receivedAtMs: number;
 }
-
-function creationOutcomeUnknown(error: unknown): boolean {
-  if (error instanceof TransportFailure) return error.reason === 'network' || error.reason === 'timeout';
-  if (error instanceof ProtocolFailure) return true;
-  return error instanceof DomainFailure && error.category === 'AUTH';
-}
-
-let scopeSeq = 0;
-function newOwnerScope(): string {
-  scopeSeq += 1;
-  return globalThis.crypto?.randomUUID?.() ?? `scope-${scopeSeq}-${Math.random().toString(36).slice(2)}`;
-}
-
-function ownerIdentityOf(session: EstablishedSession): string {
-  const { context } = session;
-  return context.mode === 'PRE_PASSENGER' ? 'PRE' : `G:${context.dataGeneration}`;
-}
-
 export interface SessionControllerDeps {
   api: ArcaApi;
   identity: IdentityPort;
@@ -99,225 +62,161 @@ export class SessionController {
   private inFlight: Promise<SessionSummary> | null = null;
   private epoch = 0;
   private readonly listeners = new Set<(event: SessionEvent) => void>();
-
   constructor(deps: SessionControllerDeps) {
     this.deps = deps;
   }
-
-  get summary(): SessionSummary | null {
+  get summary() {
     return this.current?.summary ?? null;
   }
-
-  get deletionTicketId(): string | null {
-    const context = this.current?.session.context;
-    return context?.mode === 'DELETION_RECOVERY' ? context.deletionTicketId : null;
-  }
-
-  get consentPolicies() {
-    return this.current?.session.consentPolicies ?? [];
-  }
-
-  subscribe(listener: (event: SessionEvent) => void): () => void {
+  subscribe(listener: (event: SessionEvent) => void) {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
-
   establish(): Promise<SessionSummary> {
     this.inFlight ??= this.runEstablish().finally(() => {
       this.inFlight = null;
     });
     return this.inFlight;
   }
-
   snapshot(): RequestSnapshot | null {
-    const current = this.current;
-    if (!current) return null;
-    const { ownerScope, epoch, generation, mode } = current.summary;
-    return { ownerScope, sessionEpoch: epoch, dataGeneration: generation, mode };
+    const s = this.summary;
+    return s ? { ownerScope: s.ownerScope, sessionEpoch: s.epoch, accountScope: s.accountScope, mode: s.mode } : null;
   }
-
-  isCurrent(snapshot: RequestSnapshot): boolean {
-    const now = this.snapshot();
+  isCurrent(s: RequestSnapshot): boolean {
+    const n = this.snapshot();
     return (
-      now !== null &&
-      now.ownerScope === snapshot.ownerScope &&
-      now.sessionEpoch === snapshot.sessionEpoch &&
-      now.dataGeneration === snapshot.dataGeneration &&
-      now.mode === snapshot.mode
+      n !== null &&
+      n.ownerScope === s.ownerScope &&
+      n.sessionEpoch === s.sessionEpoch &&
+      n.accountScope === s.accountScope &&
+      n.mode === s.mode
     );
   }
-
   async localOwnerVerifier(): Promise<LocalOwnerVerifier | null> {
     const salt = newSalt();
     if (!salt) return null;
     const value = await digestOwner(salt, await this.requireKey());
     return value ? { salt, value } : null;
   }
-
-  async matchesLocalOwner(verifier: LocalOwnerVerifier): Promise<boolean> {
-    return (await digestOwner(verifier.salt, await this.requireKey())) === verifier.value;
+  async matchesLocalOwner(v: LocalOwnerVerifier) {
+    return (await digestOwner(v.salt, await this.requireKey())) === v.value;
   }
-
-  async createPassenger(
-    operationId: string,
-    consents: readonly ConsentReceipt[],
-    verifier: LocalOwnerVerifier | null,
-  ): Promise<{ summary: SessionSummary; passenger: PassengerProfile }> {
+  async createMember(consents: readonly ConsentReceipt[]): Promise<MemberProfile> {
     const current = this.current;
-    if (current?.summary.mode !== 'PRE_PASSENGER') throw new SessionModeMismatchFailure();
-    let created: Awaited<ReturnType<ArcaApi['createPassenger']>>;
+    if (current?.summary.mode !== 'GUEST') throw new SessionModeMismatchFailure();
     try {
-      created = await this.deps.api.createPassenger({ bearer: current.token }, operationId, consents);
+      const session = await this.deps.api.createMember({ bearer: current.session.accessToken }, consents);
+      if (this.current !== current) throw new SessionChangedFailure();
+      if (session.context.mode !== 'ACTIVE') throw new ProtocolFailure('schema');
+      this.apply(session, current.key, session.context.member);
+      return session.context.member;
     } catch (error) {
-      if (!creationOutcomeUnknown(error) || !verifier) throw error;
+      const unknown =
+        error instanceof TransportFailure ||
+        error instanceof ProtocolFailure ||
+        (error instanceof DomainFailure &&
+          (error.category === 'AUTH' || error.category === 'MAINTENANCE' || error.code === 'MEMBER_ALREADY_EXISTS'));
+      if (!unknown || this.current !== current) throw error;
       const key = await this.requireKey();
-      if ((await digestOwner(verifier.salt, key)) !== verifier.value) {
+      if (key !== current.key) {
         await this.establish();
         throw new SessionChangedFailure();
       }
       const fresh = await this.deps.api.establishSession(key);
-      if (fresh.context.mode === 'DELETION_RECOVERY') {
-        this.apply(fresh);
-        throw new SessionChangedFailure();
+      if (this.current !== current) throw new SessionChangedFailure();
+      if (fresh.context.mode === 'ACTIVE') {
+        this.apply(fresh, key, fresh.context.member);
+        return fresh.context.member;
       }
-      try {
-        created = await this.deps.api.createPassenger({ bearer: fresh.accessToken }, operationId, consents);
-      } catch (resendError) {
-        if (fresh.context.mode === 'PRE_PASSENGER' || !creationOutcomeUnknown(resendError)) this.apply(fresh);
-        throw resendError;
-      }
+      this.apply(fresh, key);
+      throw error;
     }
-    return { summary: this.apply(created.session, created.passenger), passenger: created.passenger };
   }
-
-  async replayCreationAsActive(operationId: string, consents: readonly ConsentReceipt[]): Promise<PassengerProfile> {
-    const current = this.current;
-    if (current?.summary.mode !== 'ACTIVE') throw new SessionModeMismatchFailure();
-    const created = await this.deps.api.createPassenger({ bearer: current.token }, operationId, consents);
-    const summary = this.apply(created.session, created.passenger);
-    if (summary.ownerScope !== current.summary.ownerScope) throw new SessionChangedFailure();
-    return created.passenger;
-  }
-
-  discard(): void {
+  discard() {
     if (!this.current) return;
     this.current = null;
     this.emit({ kind: 'discarded' });
   }
-
   async run<T>(mode: SessionMode, call: (auth: Bearer, snapshot: RequestSnapshot) => Promise<T>): Promise<T> {
     const origin = this.requireSnapshot(mode);
-    await this.refreshIfNearExpiry();
+    await this.refreshOnForeground();
     let snapshot = this.requireSameOwner(origin, mode);
     try {
       return this.fenced(snapshot, await call({ bearer: this.requireToken() }, snapshot));
     } catch (error) {
       if (error instanceof StaleResultFailure) throw error;
-      const recoverable =
-        error instanceof DomainFailure && error.code === 'SESSION_RECOVERY_REQUIRED' && error.recoveryAllowed;
-      if (!recoverable) this.fenceError(snapshot, error);
+      if (!(error instanceof DomainFailure && error.code === 'SESSION_RECOVERY_REQUIRED' && error.recoveryAllowed))
+        this.fenceError(snapshot, error);
       try {
         await this.establish();
-      } catch (establishError) {
+      } catch (e) {
         this.discard();
-        throw establishError;
+        throw e;
       }
       snapshot = this.requireSameOwner(origin, mode);
       try {
         return this.fenced(snapshot, await call({ bearer: this.requireToken() }, snapshot));
-      } catch (replayError) {
-        if (replayError instanceof StaleResultFailure) throw replayError;
-        this.fenceError(snapshot, replayError);
+      } catch (e) {
+        this.fenceError(snapshot, e);
       }
     }
   }
-
-  private fenced<T>(snapshot: RequestSnapshot, value: T): T {
-    if (!this.isCurrent(snapshot)) throw new StaleResultFailure({ kind: 'result', value });
-    return value;
+  async refreshOnForeground(): Promise<void> {
+    const c = this.current;
+    if (!c) return;
+    const expires = Date.parse(c.session.expiresAt);
+    const ttl = expires - c.receivedAtMs;
+    if (this.deps.clock.now() >= expires - Math.min(60_000, Math.max(0, ttl) * 0.1)) await this.establish();
   }
-
-  private fenceError(snapshot: RequestSnapshot, error: unknown): never {
-    if (!this.isCurrent(snapshot)) throw new StaleResultFailure({ kind: 'error', error });
-    throw error;
-  }
-
-  private requireSameOwner(origin: RequestSnapshot, mode: SessionMode): RequestSnapshot {
-    const now = this.snapshot();
-    if (!now || now.ownerScope !== origin.ownerScope || now.dataGeneration !== origin.dataGeneration) {
-      throw new SessionChangedFailure();
-    }
-    return this.requireSnapshot(mode);
-  }
-
-  private requireSnapshot(mode: SessionMode): RequestSnapshot {
-    const snapshot = this.snapshot();
-    if (!snapshot || snapshot.mode !== mode) throw new SessionModeMismatchFailure();
-    return snapshot;
-  }
-
-  private requireToken(): string {
-    if (!this.current) throw new SessionModeMismatchFailure();
-    return this.current.token;
-  }
-
-  refreshOnForeground(): Promise<void> {
-    return this.refreshIfNearExpiry();
-  }
-
-  private async refreshIfNearExpiry(): Promise<void> {
-    const current = this.current;
-    if (!current) return;
-    const ttl = current.expiresAtMs - current.receivedAtMs;
-    if (!Number.isFinite(ttl) || ttl <= 0) return;
-    const margin = Math.min(60_000, ttl * 0.1);
-    if (this.deps.clock.now() >= current.expiresAtMs - margin) await this.establish();
-  }
-
-  private async runEstablish(): Promise<SessionSummary> {
+  private async runEstablish() {
     const key = await this.requireKey();
-    return this.apply(await this.deps.api.establishSession(key));
+    return this.apply(await this.deps.api.establishSession(key), key);
   }
-
-  private async requireKey(): Promise<string> {
+  private async requireKey() {
     const key = await this.deps.identity.getAnonymousKey();
     if (key.kind !== 'ok') throw new IdentityUnavailableFailure(key.reason);
     return key.key;
   }
-
-  private apply(session: EstablishedSession, boarded?: PassengerProfile): SessionSummary {
-    const ownerIdentity = ownerIdentityOf(session);
+  private apply(session: EstablishedSession, key: string, boarded?: MemberProfile): SessionSummary {
     const previous = this.current;
-    const ownerChanged = previous === null || previous.ownerIdentity !== ownerIdentity;
-    const { context } = session;
-
-    this.epoch += 1;
-    const summary: SessionSummary = {
-      ownerScope: ownerChanged || !previous ? newOwnerScope() : previous.summary.ownerScope,
-      mode: context.mode,
-      epoch: this.epoch,
-      generation: context.mode === 'PRE_PASSENGER' ? null : context.dataGeneration,
-      consentPolicyCount: session.consentPolicies.length,
-      recentDeletion: session.recentDeletion,
+    const accountScope = session.context.mode === 'ACTIVE' ? session.context.member.memberCode : null;
+    const ownerChanged = !previous || previous.key !== key || previous.summary.accountScope !== accountScope;
+    const summary = {
+      ownerScope: ownerChanged ? crypto.randomUUID() : previous.summary.ownerScope,
+      mode: session.context.mode,
+      epoch: ++this.epoch,
+      accountScope,
     };
-    const expiresAtMs = Date.parse(session.expiresAt);
-    this.current = {
-      summary,
-      token: session.accessToken,
-      expiresAtMs,
-      receivedAtMs: this.deps.clock.now(),
-      ownerIdentity,
-      session,
-    };
-    this.emit(
-      boarded
-        ? { kind: 'established', summary, ownerChanged, boarded }
-        : { kind: 'established', summary, ownerChanged },
-    );
+    this.current = { summary, session, key, receivedAtMs: this.deps.clock.now() };
+    this.emit({ kind: 'established', summary, ownerChanged, ...(boarded ? { boarded } : {}) });
     return summary;
   }
-
-  private emit(event: SessionEvent): void {
+  private emit(event: SessionEvent) {
     for (const listener of this.listeners) listener(event);
+  }
+  private requireToken() {
+    if (!this.current) throw new SessionModeMismatchFailure();
+    return this.current.session.accessToken;
+  }
+  private requireSnapshot(mode: SessionMode) {
+    const s = this.snapshot();
+    if (!s || s.mode !== mode) throw new SessionModeMismatchFailure();
+    return s;
+  }
+  private requireSameOwner(origin: RequestSnapshot, mode: SessionMode) {
+    const s = this.snapshot();
+    if (!s || s.ownerScope !== origin.ownerScope || s.accountScope !== origin.accountScope)
+      throw new SessionChangedFailure();
+    return this.requireSnapshot(mode);
+  }
+  private fenced<T>(s: RequestSnapshot, value: T): T {
+    if (!this.isCurrent(s)) throw new StaleResultFailure({ kind: 'result', value });
+    return value;
+  }
+  private fenceError(s: RequestSnapshot, error: unknown): never {
+    if (!this.isCurrent(s)) throw new StaleResultFailure({ kind: 'error', error });
+    throw error;
   }
 }

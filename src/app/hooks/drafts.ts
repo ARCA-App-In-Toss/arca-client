@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { type DraftContext, type DraftIdentity, draftName } from '../../domain/drafts/draftRepository.ts';
 import { DraftWriter, type KeepStatus } from '../../domain/drafts/draftWriter.ts';
 import { useAppServices } from '../services.tsx';
@@ -113,49 +113,4 @@ export function useDraftSession(
   );
 
   return { load, text, status, change, compositionEnd, flush, flushKept, discard };
-}
-
-export interface StaleEditDraft {
-  text: string;
-  remove(): Promise<boolean>;
-}
-
-export function useStaleEditDraft(answerId: string, currentRevision: string): StaleEditDraft | null {
-  const services = useAppServices();
-  const [found, setFound] = useState<{ identity: DraftIdentity; text: string } | null>(null);
-  const [version, setVersion] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `version`은 삭제 뒤 다시 읽기 위한 값이다.
-  useEffect(() => {
-    let active = true;
-    services.drafts.listUpdateDrafts(answerId).then(
-      (drafts) => {
-        if (!active) return;
-        const stale = drafts.find((d) => d.identity.kind === 'update' && d.identity.baseRevision !== currentRevision);
-        setFound(stale ? { identity: stale.identity, text: stale.text } : null);
-      },
-      () => {
-        if (active) setFound(null);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [services.drafts, answerId, currentRevision, version]);
-
-  return useMemo(() => {
-    if (!found) return null;
-    return {
-      text: found.text,
-      remove: async () => {
-        try {
-          await services.drafts.remove(found.identity);
-          return true;
-        } catch {
-          return false;
-        } finally {
-          setVersion((v) => v + 1);
-        }
-      },
-    };
-  }, [found, services.drafts]);
 }

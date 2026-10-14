@@ -18,12 +18,14 @@ export interface AnswerLength {
   count: number;
   overCount: number;
   savable: boolean;
+  overCodePoints: boolean;
 }
 
 export function measureAnswer(text: string): AnswerLength {
   const count = countGraphemes(text);
   const overCount = Math.max(0, count - ANSWER_MAX_GRAPHEMES);
-  return { count, overCount, savable: count >= 1 && overCount === 0 };
+  const overCodePoints = Array.from(text).length > 15_000;
+  return { count, overCount, overCodePoints, savable: count >= 1 && overCount === 0 && !overCodePoints };
 }
 
 export function prefixExcerpt(text: string, maxGraphemes: number, maxLogicalLines: number) {

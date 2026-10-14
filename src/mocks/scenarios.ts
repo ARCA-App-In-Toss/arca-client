@@ -28,7 +28,7 @@ export const scenarios: Record<string, ScenarioDefinition> = {
   },
   'MS-SES-001-pre': {
     id: 'MS-SES-001',
-    base: 'server.prePassenger',
+    base: 'server.guest',
     anonymousKey: { kind: 'ok', key: SYNTHETIC_KEYS.unregistered },
   },
   'MS-SES-002': {
@@ -41,7 +41,7 @@ export const scenarios: Record<string, ScenarioDefinition> = {
     base: 'server.activeUnanswered',
     anonymousKey: { kind: 'ok', key: SYNTHETIC_KEYS.registered },
     setup: (world) => {
-      world.advanceDayOnFirstPrepare = true;
+      world.advanceDayOnFirstCreate = true;
     },
   },
   'MS-LIST-003': {
