@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { AnswerMode, QuestionSlot } from '../../domain/analytics/productEvent.ts';
 import { saveFailureOf } from '../../domain/analytics/saveFailure.ts';
+import type { ArchiveView } from '../../domain/archive/archiveChains.ts';
 import type { WriteView } from '../../domain/commands/answerWriteCoordinator.ts';
 import type { Today, TodaySema } from '../../domain/models.ts';
 import { measureAnswer } from '../../domain/text/graphemes.ts';
@@ -77,4 +78,15 @@ export function useAnswerSaveFailedEvent(mode: AnswerMode, view: WriteView) {
     reportedFailures.add(view);
     analytics.record({ name: 'answer_save_failed', properties: { mode, ...failure } });
   }, [analytics, mode, view]);
+}
+
+export function useArchiveViewedEvent(view: ArchiveView) {
+  const { analytics } = useAppServices();
+  const shown = useRef(false);
+  const state = view.phase === 'ready' ? (view.items.length === 0 ? 'EMPTY' : 'NON_EMPTY') : null;
+  useEffect(() => {
+    if (!state || shown.current) return;
+    shown.current = true;
+    analytics.record({ name: 'archive_viewed', properties: { state } });
+  }, [analytics, state]);
 }

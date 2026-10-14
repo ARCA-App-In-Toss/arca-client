@@ -392,11 +392,10 @@ export function seedDemo(world: MockWorld): void {
     member.nickname = '하루';
   }
   world.sema = DEMO_SEMA;
-  [...archiveRecords(), ...featuredRecords].forEach((record, index) => {
+  [...archiveRecords(), ...featuredRecords].forEach((record) => {
     const createdAt = `${record.date}T00:30:00Z`;
     const dayKey = record.date.replaceAll('-', '');
     world.seedAnswer(SYNTHETIC_KEYS.registered, record.answer, {
-      answerId: `demo-answer-${index + 1}`,
       dailySemaId: `demo-day-${dayKey}`,
       semaId: `demo-sema-${dayKey}`,
       semaCode: record.code,

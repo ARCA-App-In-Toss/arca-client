@@ -260,6 +260,7 @@ export function createHandlers(world: MockWorld, baseUrl = MOCK_API_BASE) {
 }
 export const mockErrors = {
   maintenance: { kind: 'error', status: 503, body: errorBody('MAINTENANCE', 'MAINTENANCE') },
+  cursorInvalid: { kind: 'error', status: 400, body: errorBody('CURSOR_INVALID', 'VALIDATION') },
   anonymousKeyInvalid: { kind: 'error', status: 401, body: errorBody('ANONYMOUS_KEY_INVALID', 'AUTH') },
   sessionRecoveryRequired: {
     kind: 'error',

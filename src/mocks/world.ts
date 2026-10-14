@@ -72,7 +72,7 @@ export interface MockWorld {
   revokeSessions(key: string): void;
   answersOf(key: string): (AnswerDetail & { owner: string })[];
   seedAnswer(key: string, content: string, overrides?: Partial<AnswerDetail>): AnswerDetail & { owner: string };
-  addFault(op: MockOp, fault: MockFault): void;
+  addFault(op: MockOp, ...faults: MockFault[]): void;
   replaceSema(): void;
 }
 export function createMockWorld(base: ServerBase = 'server.activeUnanswered'): MockWorld {
@@ -119,9 +119,9 @@ export function createMockWorld(base: ServerBase = 'server.activeUnanswered'): M
       world.answers.set(answer.answerId, answer);
       return answer;
     },
-    addFault(op, fault) {
+    addFault(op, ...faults) {
       const q = world.faults.get(op) ?? [];
-      q.push(fault);
+      q.push(...faults);
       world.faults.set(op, q);
     },
     replaceSema() {

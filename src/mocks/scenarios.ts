@@ -50,7 +50,7 @@ export const scenarios: Record<string, ScenarioDefinition> = {
     anonymousKey: { kind: 'ok', key: SYNTHETIC_KEYS.registered },
     setup: (world) => {
       const newest = Date.parse('2026-09-10T01:00:00Z');
-      for (let i = 0; i < 21; i += 1) {
+      for (let i = 20; i >= 0; i -= 1) {
         const at = new Date(newest - i * 86_400_000).toISOString();
         world.seedAnswer(SYNTHETIC_KEYS.registered, `${LIST_TEXTS[i % LIST_TEXTS.length]} (${i + 1})`, {
           dailySemaId: `synthetic-day-list-${i}`,

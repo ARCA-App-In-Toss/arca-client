@@ -4,6 +4,7 @@ import { createHttpTransport } from '../data/api/transport.ts';
 import { queryKeys } from '../data/query/keys.ts';
 import { StorageJournal } from '../data/storage/journal.ts';
 import { AnalyticsQueue } from '../domain/analytics/analyticsQueue.ts';
+import { ArchiveChains } from '../domain/archive/archiveChains.ts';
 import { AnswerWriteCoordinator, type Completion, type SyncEvent } from '../domain/commands/answerWriteCoordinator.ts';
 import { AnswerWriteStore } from '../domain/commands/answerWriteStore.ts';
 import { DraftRepository } from '../domain/drafts/draftRepository.ts';
@@ -33,6 +34,7 @@ export interface AppServices {
   boarding: BoardingCoordinator;
   nickname: NicknameCoordinator;
   analytics: AnalyticsQueue;
+  archive: ArchiveChains;
   completions: Map<string, Completion>;
   answerRefs: Map<string, string>;
   draftRefs: Map<string, PastDraftEntry>;
@@ -81,6 +83,14 @@ export function createAppServices(config: AppServicesConfig): AppServices {
       if (s?.accountScope) queryClient.setQueryData(queryKeys.member(s.ownerScope, s.accountScope), profile);
     },
   });
+  const archive = new ArchiveChains({
+    session,
+    api,
+    scope: () => {
+      const s = snapshot.session;
+      return currentArea && s?.accountScope ? { ownerScope: s.ownerScope, accountScope: s.accountScope } : null;
+    },
+  });
   const drafts = new DraftRepository({ journal, clock: platform.clock, area: () => currentArea });
   const cacheToday = (today: Today) => {
     const s = session.summary;
@@ -104,6 +114,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     if (event.kind === 'saved') {
       const a = event.result.answer;
       queryClient.setQueryData<AnswerDetail>(queryKeys.answer(s.ownerScope, s.accountScope, a.answerId), a);
+      archive.patchRow(a);
       if (today)
         cacheToday({
           ...today,
@@ -112,6 +123,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
         });
     } else {
       queryClient.removeQueries({ queryKey: queryKeys.answer(s.ownerScope, s.accountScope, event.answerId) });
+      archive.removeRow(event.answerId);
       completions.delete(event.answerId);
       if (today)
         cacheToday({
@@ -159,6 +171,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     writes.reset();
     answers.reset();
     analytics.discardAll();
+    archive.reset();
   };
   const runStart = (reuse?: SessionSummary, handoff: 'boarded' | null = null): Promise<BootstrapState> => {
     running ??= (async () => {
@@ -239,6 +252,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     boarding,
     nickname,
     analytics,
+    archive,
     completions,
     answerRefs,
     draftRefs,
