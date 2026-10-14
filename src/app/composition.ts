@@ -62,7 +62,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
   });
   const session = new SessionController({ api, identity: platform.identity, clock: platform.clock });
   const journal = new StorageJournal(platform.storage, platform.clock);
-  const analytics = new AnalyticsQueue();
+  const analytics = new AnalyticsQueue({ session, api, clock: platform.clock, appVersion: __APP_VERSION__ });
   let snapshot: AppSnapshot = { bootstrap: { phase: 'starting' }, session: null };
   const listeners = new Set<() => void>();
   const publish = (next: AppSnapshot) => {
@@ -173,7 +173,6 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     draftRefs.clear();
     writes.reset();
     answers.reset();
-    analytics.discardAll();
     archive.reset();
   };
   const runStart = (reuse?: SessionSummary, handoff: 'boarded' | null = null): Promise<BootstrapState> => {
@@ -216,6 +215,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     if (event.kind === 'discarded') {
       currentArea = null;
       reset();
+      analytics.discardAll();
       queryClient.clear();
       publish({ bootstrap: wasReady ? { phase: 'starting' } : snapshot.bootstrap, session: null });
       if (wasReady) queueMicrotask(() => void runStart());
@@ -224,6 +224,7 @@ export function createAppServices(config: AppServicesConfig): AppServices {
     if (event.ownerChanged) {
       currentArea = null;
       reset();
+      if (!event.boarded) analytics.discardAll();
       queryClient.clear();
     }
     const reconcile = wasReady && (event.ownerChanged || snapshot.session?.mode !== event.summary.mode);
@@ -232,7 +233,9 @@ export function createAppServices(config: AppServicesConfig): AppServices {
       queryClient.setQueryData(queryKeys.member(event.summary.ownerScope, event.summary.accountScope), event.boarded);
     if (reconcile) queueMicrotask(() => void runStart(event.summary, event.boarded ? 'boarded' : null));
   });
+  platform.network.onReconnect(() => analytics.hint());
   platform.lifecycle.onVisibilityChange((visible) => {
+    analytics.hint();
     if (!visible) return;
     void session
       .refreshOnForeground()
