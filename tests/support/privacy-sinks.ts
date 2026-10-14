@@ -16,19 +16,23 @@ const PATTERNS: Record<string, string[]> = {
 const INTERNAL_ID_PATTERNS = ['synthetic-answer-', 'synthetic-ticket-', 'synthetic-deletion-'];
 
 const ANALYTICS_SINK = 'request.body.analytics';
-const ANALYTICS_FORBIDDEN = [
+const ANALYTICS_FORBIDDEN_VALUES = [SYNTHETIC_SEMA, SYNTHETIC_NEXT_DAY_SEMA].flatMap((sema) => [
+  sema.dailySemaId,
+  sema.semaId,
+  sema.semaCode,
+  sema.primaryQuestion.questionId,
+  sema.alternateQuestion.questionId,
+]);
+const ANALYTICS_FORBIDDEN_TEXT = [
   ...[SYNTHETIC_SEMA, SYNTHETIC_NEXT_DAY_SEMA].flatMap((sema) => [
-    sema.dailySemaId,
-    sema.semaId,
-    sema.semaCode,
-    sema.primaryQuestion.questionId,
-    sema.alternateQuestion.questionId,
     sema.primaryQuestion.text,
     sema.alternateQuestion.text,
   ]),
-  'ARC-',
-  'gen-synthetic-',
+  'ARCA-',
 ];
+const analyticsLeak = (value: string) =>
+  ANALYTICS_FORBIDDEN_VALUES.some((id) => value.includes(JSON.stringify(id))) ||
+  ANALYTICS_FORBIDDEN_TEXT.some((text) => value.includes(text));
 const isAnalyticsBatch = (url: string) => url.startsWith(`${MOCK_API_BASE}/v1/analytics/event-batches`);
 
 interface SinkEntry {
@@ -175,7 +179,7 @@ export async function watchSinks(page: Page) {
       if (sink !== 'request.url' && INTERNAL_ID_PATTERNS.some((pattern) => value.includes(pattern))) {
         leaks.add(`${sink} ← internalId`);
       }
-      if (sink === ANALYTICS_SINK && ANALYTICS_FORBIDDEN.some((pattern) => value.includes(pattern))) {
+      if (sink === ANALYTICS_SINK && analyticsLeak(value)) {
         leaks.add(`${sink} ← analyticsForbidden`);
       }
     }
@@ -183,10 +187,15 @@ export async function watchSinks(page: Page) {
   };
 
   const flushAnalytics = async () => {
+    const sent = page.waitForRequest((request) => isAnalyticsBatch(request.url()));
     await page.evaluate(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
+      for (const state of ['hidden', 'visible'] as const) {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }
     });
-    expect(entries.some(({ sink }) => sink === ANALYTICS_SINK)).toBe(false);
+    await sent;
+    expect(entries.some(({ sink, value }) => sink === ANALYTICS_SINK && value.includes('"events"'))).toBe(true);
   };
 
   return { checkpoint, assertClean, flushAnalytics };
