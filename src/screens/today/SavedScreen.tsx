@@ -50,11 +50,8 @@ export function SavedScreen() {
         ) : null}
       </ScenePanel>
       <div className="arca-actions">
-        <PixelButton
-          variant="primary"
-          onClick={() => navigate(paths.detail, { answerRef: routeState?.answerRef ?? '' })}
-        >
-          {copy['CPY-F10-016']}
+        <PixelButton variant="primary" onClick={() => navigate(paths.archive)}>
+          {copy['CPY-F12-013']}
         </PixelButton>
         <PixelButton onClick={() => navigate(paths.today)}>{copy['CPY-F12-014']}</PixelButton>
       </div>
