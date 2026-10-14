@@ -1,7 +1,7 @@
 # ARCA 프론트엔드 API 응답 스펙
 
-기준: 2026-10-13 사용자 제공 백엔드 전환 가이드, `feat/16-answer`, 계약 2.3.0.
-이 문서는 이전 1.1.0의 15개 명령/티켓 API 정리를 대체한다. 현재 서버에서 구현된 9개 API를 기준으로 프론트엔드를 전환했다. 서버 주소는 아직 없으므로 실제 서버 호출 검증은 진행하지 않았다.
+기준: 2026-10-14 사용자 제공 백엔드 전환 가이드, `feat/19-product-event-collection`, 계약 2.4.2.
+이 문서는 이전 1.1.0의 15개 명령/티켓 API 정리를 대체한다. 현재 서버에서 구현된 13개 API를 모두 프론트엔드에 연결했다. 서버 주소는 아직 없으므로 실제 서버 호출 검증은 진행하지 않았다.
 
 ## 1. 엔드포인트·응답·상황별 예외
 
@@ -18,8 +18,12 @@ Base URL은 `${VITE_ARCA_API_BASE}/v1`이다. 세션 교환 외에는 Bearer 인
 | `POST /v1/answers` | `201 SaveAnswerResult` | 날짜 변경 → `422 DATE_CHANGED`; 오늘 SEMA 없음 → `503 SEMA_NOT_FOUND`; SEMA·질문 변경 → `422 SEMA_REPLACED`; 오늘 답변 존재 → `409 ANSWER_ALREADY_EXISTS`; 본문 검증 실패 → `422 ANSWER_CONTENT_INVALID`; 동시 중복 제출 경합 → `500 DATABASE_ERROR` |
 | `PUT /v1/answers/{answerId}` | `200 SaveAnswerResult` | 비숫자 경로 ID·추가 필드 → `400 INVALID_REQUEST`; 없음·삭제·비소유 → `404 ANSWER_NOT_FOUND`; 본문 검증 실패 → `422 ANSWER_CONTENT_INVALID` |
 | `DELETE /v1/answers/{answerId}` | `200 DeleteAnswerResult` | 비숫자 경로 ID → `400 INVALID_REQUEST`; 없음·삭제·비소유 → `404 ANSWER_NOT_FOUND` |
+| `GET /v1/answers?cursor=` | `200 AnswerPage` | cursor 형식 오류 → `400 CURSOR_INVALID`; GUEST → `403 SESSION_SCOPE_INSUFFICIENT` |
+| `GET /v1/answers/{answerId}` | `200 AnswerDetail` | 비숫자 경로 ID → `400 INVALID_REQUEST`; GUEST → `403 SESSION_SCOPE_INSUFFICIENT`; 없음·삭제·비소유 → `404 ANSWER_NOT_FOUND` |
+| `DELETE /v1/members/me` | `204` body 없음 | GUEST → `403 SESSION_SCOPE_INSUFFICIENT`; 이미 삭제되어 token 폐기 → `401 SESSION_RECOVERY_REQUIRED`; 동시 삭제 경합 → `404 MEMBER_NOT_FOUND` 또는 `500 DATABASE_ERROR`; 트랜잭션 실패 → `500 INTERNAL_ERROR`/`DATABASE_ERROR` |
+| `POST /v1/analytics/event-batches` | `202` body 없음 | 이름·속성·개수·schemaVersion·appVersion 위반 → `400 INVALID_REQUEST`(batch 전체 거절); 동시 처리 경합 → `500 DATABASE_ERROR` |
 
-닉네임·오늘 조회·답변 변경은 ACTIVE만 허용한다. 회원 가입은 GUEST만 허용하고 ACTIVE에는 409를 반환한다. DELETE에는 body·query를 보내지 않는다. 오늘 조회에 excerptProfile query를 보내지 않는다. 가입과 작성 버튼은 요청이 끝날 때까지 비활성화하고, 같은 대상의 진행 중 요청을 공유한다.
+닉네임·오늘 조회·답변 변경·기록 조회·모든 데이터 삭제는 ACTIVE만 허용한다. 회원 가입은 GUEST만 허용하고 ACTIVE에는 409를 반환한다. 이벤트 전송은 GUEST·ACTIVE 모두 허용한다. DELETE에는 body·query를 보내지 않는다. 오늘·목록 조회에 excerptProfile query를 보내지 않는다. 가입·작성·모든 데이터 삭제 버튼은 요청이 끝날 때까지 비활성화하고, 같은 대상의 진행 중 요청을 공유한다.
 
 ## 2. 응답 양식
 
@@ -84,7 +88,7 @@ type AnswerCount = {
     count: number;
 };
 
-type AnswerDetail = {
+type AnswerSummary = {
     answerId: EntityId;
     dailySemaId: EntityId;
     semaId: EntityId;
@@ -94,7 +98,15 @@ type AnswerDetail = {
     createdDateKst: KstDate;
     isEdited: boolean;
     question: Question;
+};
+
+type AnswerDetail = AnswerSummary & {
     content: string;
+};
+
+type AnswerPage = {
+    items: Array<AnswerSummary>;
+    nextCursor: string | null;
 };
 
 type TodaySemaResponse = {
@@ -117,7 +129,17 @@ type SaveAnswerResult = {
 type DeleteAnswerResult = {
     activeAnswerCount: AnswerCount;
 };
+
+type CreateEventBatchInput = {
+    events: Array<ProductEventInput>;
+    appVersion?: string;
+    platform?: 'IOS' | 'ANDROID';
+};
 ```
+
+`ProductEventInput`은 `eventId`(UUID), `schemaVersion: 1`, `name`, `occurredAt`, 이름별 `properties`의 닫힌 union이다. 허용 이름은 onboarding_started, onboarding_skipped, today_sema_viewed, alternate_question_viewed, sema_question_changed, answer_started, answer_save_failed, archive_viewed이며 속성은 모두 필수다. 서버 소유 이벤트(onboarding_completed, answer_saved, answer_edited, answer_deleted, all_data_deleted)는 보내지 않는다.
+
+목록 한 page는 최대 20개이고 answerId 내림차순(작성 순서의 역순)이다. 이어 보는 중 새로 쓴 답변은 끼지 않고, 받은 답변을 지워도 다음 page에서 빠지는 항목이 없다. cursor는 해석하거나 직접 만들지 않으며 만료가 없다.
 
 세션 응답에는 정책 목록이 없다. 가입 화면 진입 시 정책 API를 따로 조회한다. 회원 가입 성공 응답의 ACTIVE token으로 즉시 교체하며 기존 GUEST token은 폐기된다. 닉네임 변경 응답은 receipt wrapper 없이 MemberProfile 자체다.
 
@@ -149,13 +171,13 @@ code·category·requestId는 필수다. 자유 형식 message·details·stack을
 | HTTP | category | code | 상황 |
 |---|---|---|---|
 | 400 | VALIDATION | `INVALID_REQUEST` | 필수 필드·JSON·추가 필드 등 요청 형식 오류 |
-| 400 | VALIDATION | `CURSOR_INVALID` | 향후 목록용. 현재 서버에서는 발생하지 않음 |
+| 400 | VALIDATION | `CURSOR_INVALID` | 목록 cursor 형식 오류. 첫 page부터 다시 읽음 |
 | 401 | AUTH | `ANONYMOUS_KEY_INVALID` | 익명 키 무효 |
 | 401 | AUTH | `SESSION_INVALID` | 헤더 없음·형식 오류·미발급 token. 자동 복구 없음 |
 | 401 | AUTH | `SESSION_RECOVERY_REQUIRED` | 만료·폐기된 token. 세션 재교환 후 정상 요청 최대 1회 재시도, 가입 POST 제외 |
 | 403 | AUTH | `SESSION_SCOPE_INSUFFICIENT` | 세션 mode로 실행 불가 |
 | 404 | VALIDATION | `ENDPOINT_NOT_FOUND` | 구현되지 않은 경로 |
-| 404 | VALIDATION | `MEMBER_NOT_FOUND` | 회원 조회의 GUEST |
+| 404 | VALIDATION | `MEMBER_NOT_FOUND` | 회원 조회의 GUEST, 동시 모든 데이터 삭제에서 진 요청 |
 | 404 | VALIDATION | `ANSWER_NOT_FOUND` | 답변 없음·삭제·비소유 |
 | 405 | VALIDATION | `METHOD_NOT_SUPPORTED` | 지원하지 않는 HTTP method |
 | 406 | VALIDATION | `MEDIA_TYPE_NOT_ACCEPTABLE` | Accept가 JSON을 허용하지 않음 |
@@ -183,19 +205,20 @@ code·category·requestId는 필수다. 자유 형식 message·details·stack을
 | 가입 | 같은 POST를 자동 재전송하지 않고 세션 재교환. ACTIVE면 가입 완료와 새 token을 반영 |
 | 닉네임 변경 | 입력 유지. 사용자가 같은 body로 다시 저장 가능 |
 | 답변 작성 | 오늘 조회로 날짜·SEMA·질문·본문이 같은 기록을 확인. 미확인이면 글을 유지하고 확인·명시적 재저장 제공 |
-| 답변 수정 | 오늘 답변이면 오늘 조회로 본문 확인 가능. 그 외 미확인 유지, 같은 body 명시적 재저장 제공 |
-| 답변 삭제 | 응답 유실은 미확인 유지. 명시적 DELETE 재전송의 404는 현재 답변 부재로 처리 |
+| 답변 수정 | 기록 상세 조회로 본문이 같으면 완료. 그 외 미확인 유지, 같은 body 명시적 재저장 제공 |
+| 답변 삭제 | 기록 상세 조회가 404면 완료. 답변이 남아 있으면 미확인 유지, 명시적 DELETE 재전송의 404도 완료로 처리 |
+| 모든 데이터 삭제 | DELETE를 재전송하지 않고 세션 재교환. GUEST면 완료, ACTIVE면 미적용(다시 시도 제공), 재교환도 실패하면 미확인 유지 후 `삭제 결과 확인하기` |
+| 이벤트 batch | 통신 실패·5xx는 같은 eventId로 재전송(2s·8s·30s, 화면 숨김·재연결 시 즉시). 400은 batch 폐기 |
 
 timeout·네트워크 단절·응답 파싱 실패·5xx 자체로 변경이 적용되지 않았다고 판정하지 않는다. 다른 기기에서 작성한 다른 내용이 발견되면 사용자가 작성한 임시글을 지우지 않는다. 결과 폴링·command 조회·ack·closure 요청은 없다.
 
-## 5. 아직 연결하지 않는 기능
+## 5. 서버 확인이 남은 항목
 
-`GET /v1/answers`, `GET /v1/answers/{answerId}`, `DELETE /v1/members/me`, `POST /v1/analytics/event-batches`는 서버 미구현이다. 목록·전체 삭제는 준비 중 안내를 표시하고 분석은 수집·적재하지 않는다. 오늘 상세는 오늘/저장 응답에 이미 포함된 AnswerDetail과 캐시로 제공한다.
-
-필요한 데이터와 미구현 기능별 영향은 [API_INTEGRATION_GAPS.md](API_INTEGRATION_GAPS.md)에 정리했다.
+13개 API는 모두 연결했다. 운영 값·정책 확인이 남은 항목은 [API_INTEGRATION_GAPS.md](API_INTEGRATION_GAPS.md)에 정리했다.
 
 ## 근거
 
 - [사용자 제공 백엔드 전환 가이드](.claude/spec/BACKEND_API_MIGRATION_GUIDE.md)
 - [갱신한 OpenAPI](.claude/spec/arca.openapi.json), [생성 타입](src/data/api/generated/types.gen.ts), [생성 검증기](src/data/api/generated/zod.gen.ts)
 - [실제 API 호출부](src/data/api/arcaApi.ts), [응답 유실 처리](src/domain/commands/answerWriteCoordinator.ts)
+- [기록 목록](src/domain/archive/archiveChains.ts), [모든 데이터 삭제](src/domain/deletion/allDataDelete.ts), [이벤트 큐](src/domain/analytics/analyticsQueue.ts)
