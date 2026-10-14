@@ -27,13 +27,22 @@ test('F30: nickname edit saves once, closes to its trigger; Back returns to F10'
   expect(errors).toEqual([]);
 });
 
-test('F31 remains unavailable without submitting a deletion', async ({ page }) => {
+test('F31 cancel in the dialog and on the page returns to F30 without submitting a deletion', async ({ page }) => {
+  const deletions: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'DELETE') deletions.push(new URL(request.url()).pathname);
+  });
   await openSettings(page);
   await page.getByRole('button', { name: '모든 데이터 삭제' }).click();
-  await expect(page.getByText('전체 데이터 삭제 기능을 준비하고 있어요.')).toBeVisible();
-  await expect(page.getByRole('alertdialog')).toHaveCount(0);
-  await page.getByRole('button', { name: '설정으로 돌아가기' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '모든 데이터 삭제' })).toBeVisible();
+  await page.getByRole('button', { name: '삭제', exact: true }).click();
+  const dialog = page.getByRole('alertdialog', { name: '정말 모든 데이터를 삭제할까요?' });
+  await expect(dialog.getByRole('button', { name: '취소' })).toBeFocused();
+  await dialog.getByRole('button', { name: '취소' }).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole('button', { name: '취소', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: '설정' })).toBeVisible();
+  expect(deletions).toEqual([]);
 });
 
 test('320px with 200% text: F30 and F31 controls stay reachable, no horizontal scroll', async ({ page }) => {
@@ -53,8 +62,10 @@ test('320px with 200% text: F30 and F31 controls stay reachable, no horizontal s
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   await page.getByRole('button', { name: '모든 데이터 삭제', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: '모든 데이터 삭제' })).toBeVisible();
-  const back = page.getByRole('button', { name: '설정으로 돌아가기' });
-  await back.scrollIntoViewIfNeeded();
-  await expect(back).toBeInViewport();
+  for (const name of ['취소', '삭제']) {
+    const button = page.getByRole('button', { name, exact: true });
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport();
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });

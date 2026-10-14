@@ -44,6 +44,9 @@ test('MS-PRIVACY-001 nickname error → recovery → save, then delete-all keeps
 
   await page.getByRole('button', { name: '모든 데이터 삭제' }).click();
   await expect(page.getByRole('heading', { level: 1, name: '모든 데이터 삭제' })).toBeVisible();
-  await expect(page.getByText('전체 데이터 삭제 기능을 준비하고 있어요.')).toBeVisible();
+  await page.getByRole('button', { name: '삭제', exact: true }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: '삭제', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'ARCA 이야기' })).toBeVisible();
+  await sinks.flushAnalytics();
   await sinks.assertClean();
 });
