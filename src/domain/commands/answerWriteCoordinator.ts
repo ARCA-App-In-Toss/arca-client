@@ -1,6 +1,6 @@
 import type { DraftRepository } from '../drafts/draftRepository.ts';
 import { DomainFailure } from '../failures.ts';
-import type { AnswerWriteInput, SaveAnswerResult, Today } from '../models.ts';
+import type { AnswerDetail, AnswerWriteInput, SaveAnswerResult, Today } from '../models.ts';
 import type { ArcaApi } from '../ports/api.ts';
 import type { SessionController } from '../session/sessionController.ts';
 import type { AnswerWriteStore, PendingAnswer } from './answerWriteStore.ts';
@@ -217,6 +217,10 @@ export class AnswerWriteCoordinator {
     }
   }
   private async confirm(target: string, p: PendingAnswer, check: () => void, exists = false) {
+    if (p.input.mode !== 'CREATE') {
+      await this.confirmExisting(target, p, p.input.answerId, check);
+      return;
+    }
     const today = await this.deps.session.run('ACTIVE', (auth) => this.deps.api.getToday(auth)).catch(() => null);
     check();
     if (today) {
@@ -233,16 +237,42 @@ export class AnswerWriteCoordinator {
         await this.finishSave(target, p, { answer: a, activeAnswerCount: today.activeAnswerCount }, check);
         return;
       }
-      if (p.input.mode === 'UPDATE' && a?.answerId === p.input.answerId && a.content === p.content) {
-        await this.finishSave(target, p, { answer: a, activeAnswerCount: today.activeAnswerCount }, check);
-        return;
-      }
     }
     if (exists) {
       await this.deps.store.remove(target).catch(() => undefined);
       check();
       this.set(target, { kind: 'rejected', mode: p.input.mode, code: 'ANSWER_ALREADY_EXISTS' });
       return;
+    }
+    this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true });
+  }
+  private async confirmExisting(target: string, p: PendingAnswer, answerId: string, check: () => void) {
+    let current: AnswerDetail;
+    try {
+      current = await this.deps.session.run('ACTIVE', (auth) => this.deps.api.getAnswer(auth, answerId));
+    } catch (e) {
+      check();
+      if (e instanceof DomainFailure && e.code === 'ANSWER_NOT_FOUND') {
+        if (p.input.mode === 'DELETE') {
+          await this.finishDelete(target, null, check);
+          return;
+        }
+        await this.deps.store.remove(target).catch(() => undefined);
+        check();
+        this.set(target, { kind: 'rejected', mode: p.input.mode, code: e.code });
+        return;
+      }
+      this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true });
+      return;
+    }
+    check();
+    if (p.input.mode === 'UPDATE' && current.content === p.content) {
+      const today = await this.deps.session.run('ACTIVE', (auth) => this.deps.api.getToday(auth)).catch(() => null);
+      check();
+      if (today) {
+        await this.finishSave(target, p, { answer: current, activeAnswerCount: today.activeAnswerCount }, check);
+        return;
+      }
     }
     this.set(target, { kind: 'unconfirmed', mode: p.input.mode, trackerKept: true });
   }

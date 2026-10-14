@@ -115,16 +115,44 @@ describe('direct answer mutations and uncertain responses', () => {
       { content: 'changed', isEdited: true },
     );
   });
-  test('DELETE response loss is uncertain; explicit resend 404 completes deletion', async () => {
+  test('lost DELETE response is confirmed by detail 404 without resending', async () => {
     const { world, services, save } = await setup();
     await save();
     const a = world.answersOf(SYNTHETIC_KEYS.registered)[0];
     if (!a) throw new Error('fixture');
     world.addFault('OP-012', { kind: 'lose-response' });
     await services.answers.delete({ input: { answerId: a.answerId } });
+    expect(services.answers.getView(a.answerId).kind).toBe('deleted');
+    expect(world.requests.filter((r) => r.op === 'OP-012')).toHaveLength(1);
+    expect(world.requests.some((r) => r.op === 'OP-011')).toBe(true);
+  });
+  test('unsent DELETE stays uncertain while the answer is present; explicit retry deletes', async () => {
+    const { world, services, save } = await setup();
+    await save();
+    const a = world.answersOf(SYNTHETIC_KEYS.registered)[0];
+    if (!a) throw new Error('fixture');
+    world.addFault('OP-012', { kind: 'network' });
+    await services.answers.delete({ input: { answerId: a.answerId } });
     expect(services.answers.getView(a.answerId).kind).toBe('unconfirmed');
     await services.answers.retry(a.answerId);
     expect(services.answers.getView(a.answerId).kind).toBe('deleted');
     expect(world.answers.size).toBe(0);
+  });
+  test('lost UPDATE response of a past answer is confirmed through detail content', async () => {
+    const { world, services } = await setup();
+    const past = world.seedAnswer(SYNTHETIC_KEYS.registered, '지난 기록', {
+      dailySemaId: '2026-10-01',
+      createdDateKst: '2026-10-01',
+    });
+    world.addFault('UPDATE_ANSWER', { kind: 'lose-response' });
+    await services.answers.save({
+      input: { mode: 'UPDATE', answerId: past.answerId },
+      flushDraft: async () => ({ text: '고친 지난 기록', lastModifiedAt: Date.now() }),
+    });
+    expect(services.answers.getView(past.answerId)).toMatchObject({
+      kind: 'succeeded',
+      completion: { answer: { content: '고친 지난 기록', isEdited: true } },
+    });
+    expect(world.requests.filter((r) => r.op === 'UPDATE_ANSWER')).toHaveLength(1);
   });
 });
