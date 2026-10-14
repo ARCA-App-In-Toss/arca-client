@@ -253,6 +253,98 @@ export type ApiErrorEnvelope = {
     error: ApiError;
 };
 
+export type AnswerSummary = {
+    answerId: EntityId;
+    dailySemaId: EntityId;
+    semaId: EntityId;
+    semaCode: string;
+    createdAt: Instant;
+    updatedAt: Instant;
+    createdDateKst: KstDate;
+    isEdited: boolean;
+    question: Question;
+};
+
+export type AnswerPage = {
+    items: Array<AnswerSummary>;
+    nextCursor: string | null;
+};
+
+export type ProductEventInput = {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'onboarding_started';
+    occurredAt: Instant;
+    properties: {
+        [key: string]: never;
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'onboarding_skipped';
+    occurredAt: Instant;
+    properties: {
+        [key: string]: never;
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'today_sema_viewed';
+    occurredAt: Instant;
+    properties: {
+        answerState: 'UNANSWERED' | 'ANSWERED';
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'alternate_question_viewed';
+    occurredAt: Instant;
+    properties: {
+        [key: string]: never;
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'sema_question_changed';
+    occurredAt: Instant;
+    properties: {
+        from: 'PRIMARY' | 'ALTERNATE';
+        to: 'PRIMARY' | 'ALTERNATE';
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'answer_started';
+    occurredAt: Instant;
+    properties: {
+        mode: 'CREATE' | 'UPDATE';
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'answer_save_failed';
+    occurredAt: Instant;
+    properties: {
+        mode: 'CREATE' | 'UPDATE';
+        certainty: 'REJECTED' | 'UNKNOWN';
+        reasonCode: 'VALIDATION_REJECTED' | 'DATE_CHANGED' | 'CONTENT_REPLACED' | 'CONFLICT' | 'NETWORK_UNCONFIRMED' | 'SERVER_UNAVAILABLE' | 'PROTOCOL_UNCONFIRMED';
+    };
+} | {
+    eventId: string;
+    schemaVersion: 1;
+    name: 'archive_viewed';
+    occurredAt: Instant;
+    properties: {
+        state: 'EMPTY' | 'NON_EMPTY';
+    };
+};
+
+export type CreateEventBatchInput = {
+    events: Array<ProductEventInput>;
+    appVersion?: string;
+    platform?: 'IOS' | 'ANDROID';
+};
+
 export type EstablishSessionData = {
     body: EstablishSessionInput;
     path?: never;
@@ -327,6 +419,31 @@ export type CreateMemberResponses = {
 };
 
 export type CreateMemberResponse = CreateMemberResponses[keyof CreateMemberResponses];
+
+export type DeleteMemberData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/v1/members/me';
+};
+
+export type DeleteMemberErrors = {
+    /**
+     * 백엔드 전환 가이드의 HTTP 오류
+     */
+    default: ApiErrorEnvelope;
+};
+
+export type DeleteMemberError = DeleteMemberErrors[keyof DeleteMemberErrors];
+
+export type DeleteMemberResponses = {
+    /**
+     * 성공
+     */
+    204: void;
+};
+
+export type DeleteMemberResponse = DeleteMemberResponses[keyof DeleteMemberResponses];
 
 export type GetMemberData = {
     body?: never;
@@ -403,6 +520,33 @@ export type GetTodayResponses = {
 
 export type GetTodayResponse = GetTodayResponses[keyof GetTodayResponses];
 
+export type ListAnswersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        cursor?: string;
+    };
+    url: '/v1/answers';
+};
+
+export type ListAnswersErrors = {
+    /**
+     * 백엔드 전환 가이드의 HTTP 오류
+     */
+    default: ApiErrorEnvelope;
+};
+
+export type ListAnswersError = ListAnswersErrors[keyof ListAnswersErrors];
+
+export type ListAnswersResponses = {
+    /**
+     * 성공
+     */
+    200: AnswerPage;
+};
+
+export type ListAnswersResponse = ListAnswersResponses[keyof ListAnswersResponses];
+
 export type CreateAnswerData = {
     body: CreateAnswerInput;
     path?: never;
@@ -455,6 +599,33 @@ export type DeleteAnswerResponses = {
 
 export type DeleteAnswerResponse = DeleteAnswerResponses[keyof DeleteAnswerResponses];
 
+export type GetAnswerData = {
+    body?: never;
+    path: {
+        answerId: EntityId;
+    };
+    query?: never;
+    url: '/v1/answers/{answerId}';
+};
+
+export type GetAnswerErrors = {
+    /**
+     * 백엔드 전환 가이드의 HTTP 오류
+     */
+    default: ApiErrorEnvelope;
+};
+
+export type GetAnswerError = GetAnswerErrors[keyof GetAnswerErrors];
+
+export type GetAnswerResponses = {
+    /**
+     * 성공
+     */
+    200: AnswerDetail;
+};
+
+export type GetAnswerResponse = GetAnswerResponses[keyof GetAnswerResponses];
+
 export type UpdateAnswerData = {
     body: UpdateAnswerInput;
     path: {
@@ -481,3 +652,26 @@ export type UpdateAnswerResponses = {
 };
 
 export type UpdateAnswerResponse = UpdateAnswerResponses[keyof UpdateAnswerResponses];
+
+export type CreateEventBatchData = {
+    body: CreateEventBatchInput;
+    path?: never;
+    query?: never;
+    url: '/v1/analytics/event-batches';
+};
+
+export type CreateEventBatchErrors = {
+    /**
+     * 백엔드 전환 가이드의 HTTP 오류
+     */
+    default: ApiErrorEnvelope;
+};
+
+export type CreateEventBatchError = CreateEventBatchErrors[keyof CreateEventBatchErrors];
+
+export type CreateEventBatchResponses = {
+    /**
+     * 성공
+     */
+    202: unknown;
+};

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { ProtocolFailure } from '../../domain/failures.ts';
+import { DomainFailure, ProtocolFailure, TransportFailure } from '../../domain/failures.ts';
 import { createArcaApi } from './arcaApi.ts';
 import { createHttpTransport, type HttpRequest } from './transport.ts';
 
@@ -26,7 +26,7 @@ function setup(status: number, body: unknown) {
   const transport = vi.fn(async (_request: HttpRequest) => ({ status, body }));
   return { api: createArcaApi(transport), transport };
 }
-describe('backend 2.3 API boundary', () => {
+describe('backend 2.4 API boundary', () => {
   test('session accepts fractional UTC precision and GUEST has explicit null', async () => {
     const { api } = setup(201, session);
     expect(await api.establishSession('synthetic-key')).toEqual(session);
@@ -127,6 +127,52 @@ describe('backend 2.3 API boundary', () => {
       { error: { code: 'SESSION_INVALID', category: 'AUTH', requestId: 'r', recovery: { kind: 'REFRESH_TODAY' } } },
     ])
       await expect(setup(401, body).api.getMember(auth)).rejects.toBeInstanceOf(ProtocolFailure);
+  });
+  test('list sends only the opaque cursor and keeps summaries without content', async () => {
+    const { content: _content, ...summary } = answer;
+    const { api, transport } = setup(200, { items: [summary], nextCursor: '1' });
+    expect(await api.listAnswers(auth, null)).toEqual({ items: [summary], nextCursor: '1' });
+    expect(transport.mock.calls[0]?.[0]).toMatchObject({ method: 'GET', path: '/answers' });
+    expect(transport.mock.calls[0]?.[0]).not.toHaveProperty('query');
+    await api.listAnswers(auth, '1');
+    expect(transport.mock.calls[1]?.[0].query).toEqual({ cursor: '1' });
+  });
+  test('list rejects pages without nextCursor and surfaces CURSOR_INVALID', async () => {
+    await expect(setup(200, { items: [] }).api.listAnswers(auth, null)).rejects.toBeInstanceOf(ProtocolFailure);
+    const invalid = setup(400, { error: { code: 'CURSOR_INVALID', category: 'VALIDATION', requestId: 'r' } });
+    await expect(invalid.api.listAnswers(auth, 'x')).rejects.toMatchObject({ code: 'CURSOR_INVALID' });
+  });
+  test('detail returns stored content verbatim', async () => {
+    const { api, transport } = setup(200, answer);
+    expect((await api.getAnswer(auth, '1')).content).toBe('  합성 기록\n');
+    expect(transport.mock.calls[0]?.[0]).toMatchObject({ method: 'GET', path: '/answers/1' });
+  });
+  test('member deletion succeeds only on 204 and is never retried', async () => {
+    const { api, transport } = setup(204, undefined);
+    await expect(api.deleteMember(auth)).resolves.toBeUndefined();
+    expect(transport.mock.calls[0]?.[0]).toMatchObject({ method: 'DELETE', path: '/members/me' });
+    expect(transport.mock.calls[0]?.[0]).not.toHaveProperty('body');
+    await expect(setup(200, undefined).api.deleteMember(auth)).rejects.toBeInstanceOf(ProtocolFailure);
+    const lost = vi.fn().mockRejectedValue(new TransportFailure('timeout'));
+    await expect(createArcaApi(lost).deleteMember(auth)).rejects.toBeInstanceOf(TransportFailure);
+    expect(lost).toHaveBeenCalledTimes(1);
+  });
+  test('event batch adds schemaVersion and accepts 202 without body', async () => {
+    const { api, transport } = setup(202, undefined);
+    const event = {
+      eventId: '66d9e9af-2026-4000-8000-000000000001',
+      occurredAt: '2026-10-13T14:59:00Z',
+      name: 'today_sema_viewed' as const,
+      properties: { answerState: 'ANSWERED' as const },
+    };
+    await api.sendEventBatch(auth, { events: [event], appVersion: '1.0.0' });
+    expect(transport.mock.calls[0]?.[0]).toMatchObject({
+      method: 'POST',
+      path: '/analytics/event-batches',
+      body: { events: [{ ...event, schemaVersion: 1 }], appVersion: '1.0.0' },
+    });
+    const rejected = setup(400, { error: { code: 'INVALID_REQUEST', category: 'VALIDATION', requestId: 'r' } });
+    await expect(rejected.api.sendEventBatch(auth, { events: [event] })).rejects.toBeInstanceOf(DomainFailure);
   });
   test('mutation network errors are never retried by transport', async () => {
     const transport = vi.fn().mockRejectedValue(new Error('network'));

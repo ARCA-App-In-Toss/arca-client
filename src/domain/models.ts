@@ -35,7 +35,7 @@ export interface TodaySema {
 export interface AnswerCount {
   count: number;
 }
-export interface AnswerDetail {
+export interface AnswerSummary {
   answerId: string;
   dailySemaId: string;
   semaId: string;
@@ -45,7 +45,13 @@ export interface AnswerDetail {
   createdDateKst: string;
   isEdited: boolean;
   question: Question;
+}
+export interface AnswerDetail extends AnswerSummary {
   content: string;
+}
+export interface AnswerPage {
+  items: readonly AnswerSummary[];
+  nextCursor: string | null;
 }
 export interface Today {
   dateKst: string;

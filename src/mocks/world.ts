@@ -42,7 +42,11 @@ export type MockOp =
   | 'OP-004'
   | 'OP-005'
   | 'OP-006'
+  | 'OP-010'
+  | 'OP-011'
   | 'OP-012'
+  | 'OP-013'
+  | 'OP-014'
   | 'UPDATE_ANSWER'
   | 'CONSENT_POLICIES';
 export type MockFault =
@@ -59,7 +63,9 @@ export interface MockWorld {
   sessions: Map<string, { anonymousKey: string; revoked: boolean; expiresAt: number }>;
   policies: ConsentPolicy[];
   sema: MockSema;
-  requests: { op: MockOp; bearer: string | null; method: string; path: string }[];
+  requests: { op: MockOp; bearer: string | null; method: string; path: string; search: string }[];
+  events: { eventId: string; name: string; properties: Record<string, unknown> }[];
+  pageSize: number;
   faults: Map<MockOp, MockFault[]>;
   advanceDayOnFirstCreate: boolean;
   issueToken(key: string): string;
@@ -79,6 +85,8 @@ export function createMockWorld(base: ServerBase = 'server.activeUnanswered'): M
     policies: SYNTHETIC_POLICIES.map((p) => ({ ...p })),
     sema: structuredClone(SYNTHETIC_SEMA),
     requests: [],
+    events: [],
+    pageSize: 20,
     faults: new Map(),
     advanceDayOnFirstCreate: false,
     issueToken(key) {

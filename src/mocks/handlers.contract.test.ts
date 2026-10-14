@@ -25,9 +25,10 @@ async function call(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   expect(r.headers.get('Cache-Control')).toBe('no-store');
-  return { status: r.status, body: await r.json() };
+  const text = await r.text();
+  return { status: r.status, body: text ? JSON.parse(text) : undefined };
 }
-test('all nine implemented endpoints satisfy generated validators', async () => {
+test('all thirteen implemented endpoints satisfy generated validators', async () => {
   const world = createMockWorld();
   server.use(...createHandlers(world));
   const s = await call(world, 'POST', '/sessions', { anonymousKey: SYNTHETIC_KEYS.registered });
@@ -61,9 +62,39 @@ test('all nine implemented endpoints satisfy generated validators', async () => 
   wire.zSaveAnswerResult.parse(
     (await call(world, 'PUT', `/answers/${saved.answer.answerId}`, { content: '수정' })).body,
   );
+  const page = wire.zAnswerPage.parse((await call(world, 'GET', '/answers')).body);
+  expect(page.items[0]).not.toHaveProperty('content');
+  wire.zAnswerDetail.parse((await call(world, 'GET', `/answers/${saved.answer.answerId}`)).body);
   wire.zDeleteAnswerResult.parse((await call(world, 'DELETE', `/answers/${saved.answer.answerId}`)).body);
+  const batch = await call(world, 'POST', '/analytics/event-batches', {
+    events: [
+      {
+        eventId: '66d9e9af-2026-4000-8000-000000000001',
+        schemaVersion: 1,
+        name: 'onboarding_started',
+        occurredAt: '2026-10-13T14:59:00Z',
+        properties: {},
+      },
+    ],
+  });
+  expect(batch).toEqual({ status: 202, body: undefined });
+  expect(await call(world, 'DELETE', '/members/me')).toEqual({ status: 204, body: undefined });
+  const after = await call(world, 'POST', '/sessions', { anonymousKey: SYNTHETIC_KEYS.registered });
+  expect(wire.zSessionResponse.parse(after.body).context.mode).toBe('GUEST');
 });
-test.each(['/answers', '/answers/1', '/analytics/event-batches', '/commands/synthetic-ticket'])(
+test('list pages are newest first, opaque-cursored and reject malformed cursors', async () => {
+  const world = createMockWorld();
+  world.pageSize = 2;
+  for (const content of ['a', 'b', 'c']) world.seedAnswer(SYNTHETIC_KEYS.registered, content);
+  server.use(...createHandlers(world));
+  const first = wire.zAnswerPage.parse((await call(world, 'GET', '/answers')).body);
+  expect(first.items.map((i) => i.answerId)).toEqual(['3', '2']);
+  const next = wire.zAnswerPage.parse((await call(world, 'GET', `/answers?cursor=${first.nextCursor}`)).body);
+  expect(next).toMatchObject({ items: [{ answerId: '1' }], nextCursor: null });
+  const bad = await call(world, 'GET', '/answers?cursor=abc');
+  expect(wire.zApiErrorEnvelope.parse(bad.body).error.code).toBe('CURSOR_INVALID');
+});
+test.each(['/analytics/event-batches', '/commands/synthetic-ticket'])(
   'unsupported GET %s is a real endpoint error',
   async (path) => {
     const world = createMockWorld();

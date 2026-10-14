@@ -4,6 +4,8 @@ import type { ArcaApi } from '../../domain/ports/api.ts';
 import { toDomainFailure } from './errorEnvelope.ts';
 import {
   zActiveSessionResponse,
+  zAnswerDetail,
+  zAnswerPage,
   zConsentPoliciesResponse,
   zDeleteAnswerResult,
   zMemberProfile,
@@ -16,6 +18,8 @@ import type { HttpRequest, HttpTransport } from './transport.ts';
 export const SAFE_QUERY_TIMEOUT_MS = 8_000;
 export const CREATE_MEMBER_TIMEOUT_MS = 10_000;
 export const SET_NICKNAME_TIMEOUT_MS = 10_000;
+export const DELETE_MEMBER_TIMEOUT_MS = 15_000;
+export const EVENT_BATCH_SCHEMA_VERSION = 1;
 
 async function send<S extends z.ZodType>(
   transport: HttpTransport,
@@ -29,6 +33,12 @@ async function send<S extends z.ZodType>(
     if (!parsed.success) throw new ProtocolFailure('schema');
     return parsed.data;
   }
+  if (response.status >= 400) throw toDomainFailure(response.body);
+  throw new ProtocolFailure('status');
+}
+async function sendEmpty(transport: HttpTransport, request: HttpRequest, status: number): Promise<void> {
+  const response = await transport(request);
+  if (response.status === status) return;
   if (response.status >= 400) throw toDomainFailure(response.body);
   throw new ProtocolFailure('status');
 }
@@ -129,6 +139,43 @@ export function createArcaApi(transport: HttpTransport): ArcaApi {
         request('DELETE', `/answers/${encodeURIComponent(answerId)}`, auth.bearer),
         200,
         zDeleteAnswerResult,
+      ),
+    listAnswers: (auth, cursor, signal) =>
+      query(
+        transport,
+        {
+          ...request('GET', '/answers', auth.bearer, undefined, signal),
+          ...(cursor === null ? {} : { query: { cursor } }),
+        },
+        zAnswerPage,
+      ),
+    getAnswer: (auth, answerId, signal) =>
+      query(
+        transport,
+        request('GET', `/answers/${encodeURIComponent(answerId)}`, auth.bearer, undefined, signal),
+        zAnswerDetail,
+      ),
+    deleteMember: (auth) =>
+      sendEmpty(
+        transport,
+        { ...request('DELETE', '/members/me', auth.bearer), timeoutMs: DELETE_MEMBER_TIMEOUT_MS },
+        204,
+      ),
+    sendEventBatch: (auth, batch) =>
+      sendEmpty(
+        transport,
+        request('POST', '/analytics/event-batches', auth.bearer, {
+          events: batch.events.map((event) => ({
+            eventId: event.eventId,
+            schemaVersion: EVENT_BATCH_SCHEMA_VERSION,
+            name: event.name,
+            occurredAt: event.occurredAt,
+            properties: event.properties,
+          })),
+          ...(batch.appVersion === undefined ? {} : { appVersion: batch.appVersion }),
+          ...(batch.platform === undefined ? {} : { platform: batch.platform }),
+        }),
+        202,
       ),
   };
 }

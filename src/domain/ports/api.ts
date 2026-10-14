@@ -1,4 +1,7 @@
+import type { ProductEventBatch } from '../analytics/productEvent.ts';
 import type {
+  AnswerDetail,
+  AnswerPage,
   ConsentPolicy,
   ConsentReceipt,
   DeleteAnswerResult,
@@ -23,4 +26,8 @@ export interface ArcaApi {
   ): Promise<SaveAnswerResult>;
   updateAnswer(auth: Bearer, answerId: string, content: string): Promise<SaveAnswerResult>;
   deleteAnswer(auth: Bearer, answerId: string): Promise<DeleteAnswerResult>;
+  listAnswers(auth: Bearer, cursor: string | null, signal?: AbortSignal): Promise<AnswerPage>;
+  getAnswer(auth: Bearer, answerId: string, signal?: AbortSignal): Promise<AnswerDetail>;
+  deleteMember(auth: Bearer): Promise<void>;
+  sendEventBatch(auth: Bearer, batch: ProductEventBatch): Promise<void>;
 }

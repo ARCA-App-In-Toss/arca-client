@@ -15,6 +15,6 @@ export function saveFailureOf(
 ): { certainty: SaveFailureCertainty; reasonCode: SaveFailureReason } | null {
   if (view.kind === 'unconfirmed') return { certainty: 'UNKNOWN', reasonCode: 'NETWORK_UNCONFIRMED' };
   if (view.kind === 'rejected')
-    return { certainty: 'NOT_APPLIED', reasonCode: REASONS[view.code] ?? 'VALIDATION_REJECTED' };
+    return { certainty: 'REJECTED', reasonCode: REASONS[view.code] ?? 'VALIDATION_REJECTED' };
   return null;
 }

@@ -1,6 +1,7 @@
 import { delay, HttpResponse, http } from 'msw';
 import {
   zCreateAnswerInput,
+  zCreateEventBatchInput,
   zCreateMemberInput,
   zEstablishSessionInput,
   zUpdateAnswerInput,
@@ -33,7 +34,14 @@ async function faultResponse(fault: MockFault | undefined): Promise<Response | n
 export function createHandlers(world: MockWorld, baseUrl = MOCK_API_BASE) {
   const bearer = (request: Request) => request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '') ?? null;
   const begin = async (request: Request, op: MockOp) => {
-    world.requests.push({ op, bearer: bearer(request), method: request.method, path: new URL(request.url).pathname });
+    const url = new URL(request.url);
+    world.requests.push({
+      op,
+      bearer: bearer(request),
+      method: request.method,
+      path: url.pathname,
+      search: url.search,
+    });
     const f = world.faults.get(op)?.shift();
     return { fault: f, response: await faultResponse(f) };
   };
@@ -61,6 +69,10 @@ export function createHandlers(world: MockWorld, baseUrl = MOCK_API_BASE) {
     return value;
   };
   const count = (owner: string) => ({ count: world.answersOf(owner).length });
+  const summary = (a: ReturnType<MockWorld['seedAnswer']>) => {
+    const { content: _content, ...value } = answer(a);
+    return value;
+  };
   const finish = (fault: MockFault | undefined, body: unknown, status = 200) =>
     fault?.kind === 'lose-response' ? HttpResponse.error() : json(body, status);
   return [
@@ -164,6 +176,34 @@ export function createHandlers(world: MockWorld, baseUrl = MOCK_API_BASE) {
       const a = world.seedAnswer(owner, p.data.content, { question: { ...q } });
       return finish(b.fault, { answer: answer(a), activeAnswerCount: count(owner) }, 201);
     }),
+    http.get(`${baseUrl}/v1/answers`, async ({ request }) => {
+      const b = await begin(request, 'OP-010');
+      if (b.response) return b.response;
+      const owner = auth(request);
+      if (owner instanceof Response) return owner;
+      const cursor = new URL(request.url).searchParams.get('cursor');
+      if (cursor !== null && (!/^\d+$/.test(cursor) || Number(cursor) < 1)) return error(400, 'CURSOR_INVALID');
+      const sorted = world
+        .answersOf(owner)
+        .filter((a) => cursor === null || Number(a.answerId) < Number(cursor))
+        .sort((x, y) => Number(y.answerId) - Number(x.answerId));
+      const items = sorted.slice(0, world.pageSize);
+      const last = items.at(-1);
+      return json({
+        items: items.map(summary),
+        nextCursor: sorted.length > items.length && last ? last.answerId : null,
+      });
+    }),
+    http.get(`${baseUrl}/v1/answers/:answerId`, async ({ request, params }) => {
+      const b = await begin(request, 'OP-011');
+      if (b.response) return b.response;
+      const owner = auth(request);
+      if (owner instanceof Response) return owner;
+      if (!/^\d+$/.test(String(params.answerId))) return error(400, 'INVALID_REQUEST');
+      const a = world.answers.get(String(params.answerId));
+      if (!a || a.owner !== owner) return error(404, 'ANSWER_NOT_FOUND');
+      return json(answer(a));
+    }),
     http.put(`${baseUrl}/v1/answers/:answerId`, async ({ request, params }) => {
       const b = await begin(request, 'UPDATE_ANSWER');
       if (b.response) return b.response;
@@ -188,6 +228,32 @@ export function createHandlers(world: MockWorld, baseUrl = MOCK_API_BASE) {
       if (!a || a.owner !== owner) return error(404, 'ANSWER_NOT_FOUND');
       world.answers.delete(a.answerId);
       return finish(b.fault, { activeAnswerCount: count(owner) });
+    }),
+    http.delete(`${baseUrl}/v1/members/me`, async ({ request }) => {
+      const b = await begin(request, 'OP-013');
+      if (b.response) return b.response;
+      const owner = auth(request);
+      if (owner instanceof Response) return owner;
+      for (const a of world.answersOf(owner)) world.answers.delete(a.answerId);
+      world.members.delete(owner);
+      world.revokeSessions(owner);
+      return b.fault?.kind === 'lose-response'
+        ? HttpResponse.error()
+        : new HttpResponse(null, { status: 204, headers: noStore });
+    }),
+    http.post(`${baseUrl}/v1/analytics/event-batches`, async ({ request }) => {
+      const b = await begin(request, 'OP-014');
+      if (b.response) return b.response;
+      const owner = auth(request, false);
+      if (owner instanceof Response) return owner;
+      const p = zCreateEventBatchInput.safeParse(await request.json().catch(() => null));
+      if (!p.success) return error(400, 'INVALID_REQUEST');
+      for (const event of p.data.events)
+        if (!world.events.some((e) => e.eventId === event.eventId))
+          world.events.push({ eventId: event.eventId, name: event.name, properties: event.properties });
+      return b.fault?.kind === 'lose-response'
+        ? HttpResponse.error()
+        : new HttpResponse(null, { status: 202, headers: noStore });
     }),
     http.all(`${baseUrl}/v1/*`, () => error(404, 'ENDPOINT_NOT_FOUND')),
   ];

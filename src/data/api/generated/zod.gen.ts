@@ -283,6 +283,109 @@ export const zApiErrorEnvelope = z.strictObject({
     error: zApiError
 });
 
+export const zAnswerSummary = z.object({
+    answerId: zEntityId,
+    dailySemaId: zEntityId,
+    semaId: zEntityId,
+    semaCode: z.string().min(1),
+    createdAt: zInstant,
+    updatedAt: zInstant,
+    createdDateKst: zKstDate,
+    isEdited: z.boolean(),
+    question: zQuestion
+});
+
+export const zAnswerPage = z.object({
+    items: z.array(zAnswerSummary).max(20),
+    nextCursor: z.string().min(1).nullable()
+});
+
+export const zProductEventInput = z.union([
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('onboarding_started'),
+        occurredAt: zInstant,
+        properties: z.record(z.string(), z.never())
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('onboarding_skipped'),
+        occurredAt: zInstant,
+        properties: z.record(z.string(), z.never())
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('today_sema_viewed'),
+        occurredAt: zInstant,
+        properties: z.strictObject({
+            answerState: z.enum(['UNANSWERED', 'ANSWERED'])
+        })
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('alternate_question_viewed'),
+        occurredAt: zInstant,
+        properties: z.record(z.string(), z.never())
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('sema_question_changed'),
+        occurredAt: zInstant,
+        properties: z.strictObject({
+            from: z.enum(['PRIMARY', 'ALTERNATE']),
+            to: z.enum(['PRIMARY', 'ALTERNATE'])
+        })
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('answer_started'),
+        occurredAt: zInstant,
+        properties: z.strictObject({
+            mode: z.enum(['CREATE', 'UPDATE'])
+        })
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('answer_save_failed'),
+        occurredAt: zInstant,
+        properties: z.strictObject({
+            mode: z.enum(['CREATE', 'UPDATE']),
+            certainty: z.enum(['REJECTED', 'UNKNOWN']),
+            reasonCode: z.enum([
+                'VALIDATION_REJECTED',
+                'DATE_CHANGED',
+                'CONTENT_REPLACED',
+                'CONFLICT',
+                'NETWORK_UNCONFIRMED',
+                'SERVER_UNAVAILABLE',
+                'PROTOCOL_UNCONFIRMED'
+            ])
+        })
+    }),
+    z.strictObject({
+        eventId: z.uuid(),
+        schemaVersion: z.literal(1),
+        name: z.literal('archive_viewed'),
+        occurredAt: zInstant,
+        properties: z.strictObject({
+            state: z.enum(['EMPTY', 'NON_EMPTY'])
+        })
+    })
+]);
+
+export const zCreateEventBatchInput = z.strictObject({
+    events: z.array(zProductEventInput).min(1).max(20),
+    appVersion: z.string().max(50).optional(),
+    platform: z.enum(['IOS', 'ANDROID']).optional()
+});
+
 export const zEstablishSessionBody = zEstablishSessionInput;
 
 /**
@@ -305,6 +408,11 @@ export const zCreateMemberResponse = zActiveSessionResponse;
 /**
  * 성공
  */
+export const zDeleteMemberResponse = z.void();
+
+/**
+ * 성공
+ */
 export const zGetMemberResponse = zMemberProfile;
 
 export const zSetNicknameBody = zUpdateNicknameInput;
@@ -318,6 +426,15 @@ export const zSetNicknameResponse = zMemberProfile;
  * 성공
  */
 export const zGetTodayResponse = zTodaySemaResponse;
+
+export const zListAnswersQuery = z.object({
+    cursor: z.string().min(1).optional()
+});
+
+/**
+ * 성공
+ */
+export const zListAnswersResponse = zAnswerPage;
 
 export const zCreateAnswerBody = zCreateAnswerInput;
 
@@ -335,6 +452,15 @@ export const zDeleteAnswerPath = z.object({
  */
 export const zDeleteAnswerResponse = zDeleteAnswerResult;
 
+export const zGetAnswerPath = z.object({
+    answerId: zEntityId
+});
+
+/**
+ * 성공
+ */
+export const zGetAnswerResponse = zAnswerDetail;
+
 export const zUpdateAnswerBody = zUpdateAnswerInput;
 
 export const zUpdateAnswerPath = z.object({
@@ -345,3 +471,5 @@ export const zUpdateAnswerPath = z.object({
  * 성공
  */
 export const zUpdateAnswerResponse = zSaveAnswerResult;
+
+export const zCreateEventBatchBody = zCreateEventBatchInput;
